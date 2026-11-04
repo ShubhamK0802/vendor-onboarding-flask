@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, 
 CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY, run_id TEXT, decision TEXT, note TEXT, reviewer TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS docs(run_id TEXT, slot TEXT, filename TEXT, data BLOB);
 CREATE TABLE IF NOT EXISTS vendor_ids(company_key TEXT PRIMARY KEY, vendor_id TEXT);
+CREATE TABLE IF NOT EXISTS run_vendor(run_id TEXT PRIMARY KEY, vendor_id TEXT);
 CREATE TABLE IF NOT EXISTS claims(run_id TEXT PRIMARY KEY, reviewer TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS vendors(company_key TEXT, company_name TEXT, bank_account_number TEXT, mobile TEXT, email TEXT, address TEXT);
 """
@@ -23,7 +24,7 @@ CREATE TABLE IF NOT EXISTS vendors(company_key TEXT, company_name TEXT, bank_acc
 
 def new_vendor_id(country):
     """V + country code + 6 random letters/digits, e.g. VIN7A3D49. Letters and digits only."""
-    return "V" + (country if country in ("IN", "US", "DE") else "XX") + uuid.uuid4().hex[:6].upper()
+    return "V" + (country if isinstance(country, str) and len(country) == 2 and country.isalpha() and country.isupper() else "XX") + uuid.uuid4().hex[:6].upper()
 
 
 def connect():
@@ -63,19 +64,25 @@ def save_run(submission, decision, seconds, parent_id=None, files=None):
             run_id, now(), submission.get("company_name"), submission.get("country"), decision["status"], decision["sub_status"],
             decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
         conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
-        if key and decision["status"] == "Approved":  # a vendor ID is the vendor-master number: only an approved company gets one
-            conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (key, new_vendor_id(submission.get("country"))))
+        vendor = vendor_for(conn, submission, key, parent_id)
+        conn.execute("INSERT INTO run_vendor VALUES (?,?)", (run_id, vendor))
+        if key:
+            conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (key, vendor))
     return run_id
+
+
+def vendor_for(conn, submission, key, parent_id):
+    """Every applicant gets a vendor ID on its first submission. A company already known by its tax identity keeps its ID; a corrected
+    resubmission keeps the ID of the submission it replaces (even if the tax ID was the typo); otherwise a new ID."""
+    known = key and conn.execute("SELECT vendor_id FROM vendor_ids WHERE company_key=?", (key,)).fetchone()
+    parent = parent_id and conn.execute("SELECT vendor_id FROM run_vendor WHERE run_id=?", (parent_id,)).fetchone()
+    return (known or parent or {"vendor_id": new_vendor_id(submission.get("country"))})["vendor_id"]
 
 
 def save_decision(run_id, decision, note, reviewer):
     with closing(connect()) as conn, conn:
         conn.execute("INSERT INTO decisions(run_id, decision, note, reviewer, ts) VALUES (?,?,?,?,?)", (run_id, decision, note, reviewer, now()))
         conn.execute("DELETE FROM claims WHERE run_id=?", (run_id,))  # a decided run is nobody's any more
-        if decision == "Approved":  # a reviewer approving a company makes it a vendor too
-            payload = json.loads(conn.execute("SELECT payload FROM runs WHERE run_id=?", (run_id,)).fetchone()["payload"])
-            if company_key(payload):
-                conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (company_key(payload), new_vendor_id(payload.get("country"))))
 
 
 def claims():
@@ -111,7 +118,7 @@ def get_docs(run_id, with_data=True):
 def reset():
     """Demo only (a real audit trail is never deletable): clears every run and decision, and restores the vendors on file."""
     with closing(connect()) as conn, conn:
-        for table in ("runs", "decisions", "docs", "vendors", "claims", "vendor_ids"):
+        for table in ("runs", "decisions", "docs", "vendors", "claims", "vendor_ids", "run_vendor"):
             conn.execute(f"DELETE FROM {table}")
 
 
@@ -138,10 +145,10 @@ def load_runs():
     runs = query("SELECT * FROM runs ORDER BY ts, rowid")
     latest = {d["run_id"]: d for d in load_decisions()}
     child = {r["parent_id"]: r["run_id"] for r in runs if r["parent_id"]}
-    vendor_ids = {v["company_key"]: v["vendor_id"] for v in query("SELECT * FROM vendor_ids")}
+    vendor_ids = {v["run_id"]: v["vendor_id"] for v in query("SELECT * FROM run_vendor")}
     for run in runs:
         run.update(decision=json.loads(run["decision"]), payload=json.loads(run["payload"]), snapshot=json.loads(run["snapshot"]))
-        run["vendor_id"] = vendor_ids.get(company_key(run["payload"]), "")
+        run["vendor_id"] = vendor_ids.get(run["run_id"], "")
         run["findings"] = run["decision"].get("findings", [])
         run["codes"] = [f["code"] for f in run["findings"]]
         run.update(decision_by=latest.get(run["run_id"]), superseded_by=child.get(run["run_id"]))

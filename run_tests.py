@@ -11,7 +11,7 @@ import store
 from decide import parse_submission, run_pipeline
 from datetime import datetime, timedelta
 
-from samples import CASES, INDIA, fresh, make_iban, short_tax_id
+from samples import CASES, INDIA, american, fresh, make_iban, short_tax_id
 
 store.DB_PATH = os.path.join(tempfile.mkdtemp(), "test.db")
 failed = []
@@ -76,11 +76,12 @@ near.update(company_name="Orion Lookalike Traders", pan="LMNOP4321Q", tax_id="27
 shared = submit(near)
 check(run(shared)["waiting_on"] == "Reviewer" and "DUPLICATE_BANK_ACCOUNT" in run(shared)["codes"], "a bank account already on file sends the run to a reviewer")
 
-check(run(shared)["vendor_id"] == "", "vendor ID: a company that has not been approved has none")
+vid = run(shared)["vendor_id"]
+check(re.fullmatch(r"VIN[0-9A-F]{6}", vid), "vendor ID: every applicant gets one on its first submission, approved or not")
 store.save_decision(shared, "Info requested", "Please send a bank letter", "Asha")
 check(run(shared)["waiting_on"] == "Vendor", "info requested: leaves the reviewer queue but stays visible, waiting on the vendor")
 store.save_decision(shared, "Approved", "Bank letter received", "Asha")
-check(re.fullmatch(r"VIN[0-9A-F]{6}", run(shared)["vendor_id"]), "vendor ID: a reviewer approving a company issues one (V + country + letters/digits)")
+check(run(shared)["vendor_id"] == vid, "vendor ID: approval does not change it")
 check(run(shared)["final"] == "Approved" and run(shared)["decided_by"] == "Asha", "reviewer approval changes the final status and records who")
 check(any(v["company_name"] == "Orion Lookalike Traders" for v in store.known_vendors(store.load_runs())), "reviewer-approved vendor joins the duplicate check list")
 
@@ -97,11 +98,19 @@ quartz = fresh(copy.deepcopy(INDIA), "Quartz Mills Private Limited", "QUACM2345Q
 outcome = lambda d, prev=(): (lambda r: (r["status"], r["sub_status"]))(run_pipeline(d, [], prev))
 check(outcome(quartz) == ("Approved", None), "status definitions: a vendor with nothing wrong is approved")
 never = submit(dict(quartz, tax_id="123456789"))
-check(run(never)["vendor_id"] == "", "vendor ID: a sent-back or rejected company never gets a vendor ID")
+check(re.fullmatch(r"VIN[0-9A-F]{6}", run(never)["vendor_id"]), "vendor ID: a sent-back company has one too")
 
 # vendor IDs carry the company's country and nothing but letters and digits
 from store import new_vendor_id  # noqa: E402
-check(all(re.fullmatch(rf"V{cc}[0-9A-F]{{6}}", new_vendor_id(cc)) for cc in ("IN", "US", "DE")) and re.fullmatch(r"VXX[0-9A-F]{6}", new_vendor_id("BR")), "vendor ID: V + IN / US / DE (XX if another country) + 6 letters or digits, no special characters")
+check(all(re.fullmatch(rf"V{cc}[0-9A-F]{{6}}", new_vendor_id(cc)) for cc in ("IN", "US", "DE")) and re.fullmatch(r"VBR[0-9A-F]{6}", new_vendor_id("BR")) and re.fullmatch(r"VXX[0-9A-F]{6}", new_vendor_id(None)), "vendor ID: V + the applicant's country (XX if unknown) + 6 letters or digits, no special characters")
+typo = submit(american("Zenith Fabricators LLC", "42958371", "5100999111"))
+fixed = submit(american("Zenith Fabricators LLC", "04-2958371", "5100999111"), parent_id=typo)
+later = submit(american("Zenith Fabricators LLC", "04-2958371", "5100999111"))
+check(run(typo)["vendor_id"].startswith("VUS") and run(fixed)["vendor_id"] == run(typo)["vendor_id"] == run(later)["vendor_id"], "vendor ID: a corrected resubmission keeps the ID of the submission it replaces, and so does the company's next application")
+keyless = dict(quartz, pan="")  # no PAN, so no company key to recognise it by
+first_k, other_k = submit(keyless), submit(dict(keyless, company_name="Other Mills Private Limited"))
+again_k = submit(keyless, parent_id=first_k)
+check(run(first_k)["vendor_id"] and run(first_k)["vendor_id"] != run(other_k)["vendor_id"] and run(again_k)["vendor_id"] == run(first_k)["vendor_id"], "vendor ID: even with no tax identity every applicant gets an ID, and a linked resubmission keeps it")
 
 # ---- the vendor message is short and to the point
 two = run_pipeline(dict(quartz, bank_account_name="Zenith Traders", documents=dict(quartz["documents"], voided_cheque=None)), [])["vendor_message"]

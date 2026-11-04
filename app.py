@@ -14,7 +14,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 from markupsafe import Markup, escape  # noqa: E402
 
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, REMINDER_DAYS, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, REMINDER_DAYS, RULE_VERSION, VENDOR_DOCUMENTS, VENDOR_REASONS, VENDOR_TO_FIX  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
 app = Flask(__name__)
@@ -318,38 +318,65 @@ def dashboard():
                            picked=next((r for r in runs if r["run_id"] == request.args.get("run")), None))
 
 
-VERDICT_SUBJECTS = {("Approved", None): "Your vendor application is approved", ("Pending", NEEDS_REVIEW): "Your vendor application is under review",
-                    ("Pending", VENDOR_TO_FIX): "Action needed on your vendor application", ("Rejected", None): "Update on your vendor application"}
-DECISION_MESSAGES = {"Approved": ("Your vendor application is approved", "Approved."), "Rejected": ("Update on your vendor application", "Not approved. Please contact support."),
-                     "Info requested": ("More information needed for your vendor application", "We need more information to finish your application. A team member will contact you.")}
+VERDICT_HEADLINES = {("Approved", None): "Approved", ("Pending", NEEDS_REVIEW): "Under review", ("Pending", VENDOR_TO_FIX): "Action needed", ("Rejected", None): "Rejected"}
+
+
+def unique(items):
+    return list(dict.fromkeys(items))
+
+
+def decision_mail(run, decision):
+    """What the vendor is told when a reviewer decides. Worked out from the findings: the reviewer types nothing, and no internal detail leaks."""
+    if decision == "Approved":
+        return "Approved", "Your application is approved."
+    if decision == "Rejected":
+        reasons = unique(VENDOR_REASONS[c] for c in run["codes"] if c in VENDOR_REASONS) or ["we could not verify your information"]
+        return "Rejected", "Your application is rejected because " + "; ".join(reasons) + "."
+    documents = unique(VENDOR_DOCUMENTS[c] for c in run["codes"] if c in VENDOR_DOCUMENTS) or ["documents that confirm your company's identity and bank details"]
+    return "More information needed", ("We need these from you to validate your information and continue with your application:\n"
+                                       + "\n".join(f"{i}. {d}" for i, d in enumerate(documents, 1)) + "\nPlease resubmit with them on the Onboard vendor page.")
 
 
 def vendor_messages(runs):
-    """Everything the vendor is told, newest first. SIMULATED: nothing is emailed; this is what a mail service would send."""
-    messages = []
+    """One email thread per application (a corrected resubmission stays in its thread), newest first. SIMULATED: nothing is emailed."""
+    by_id = {r["run_id"]: r for r in runs}
 
-    def add(run, when, subject, body, kind):
-        messages.append({"when": when, "to": run["payload"].get("email") or "(no email given)", "subject": subject, "body": body, "kind": kind, "run_id": run["run_id"], "company": run["company"]})
+    def root(run):
+        while run["parent_id"] in by_id:
+            run = by_id[run["parent_id"]]
+        return run["run_id"]
+
+    threads = {}
+
+    def add(run, when, headline, body):
+        thread = threads.setdefault(root(run), {"id": root(run), "company": run["company"], "to": "", "messages": []})
+        thread["to"] = run["payload"].get("email") or thread["to"]
+        thread["messages"].append({"when": when, "headline": headline, "body": body, "run_id": run["run_id"]})
 
     for r in runs:
-        add(r, r["ts"], VERDICT_SUBJECTS[(r["status"], r["sub_status"])], r["decision"]["vendor_message"], "Verdict")
+        add(r, r["ts"], VERDICT_HEADLINES[(r["status"], r["sub_status"])], r["decision"]["vendor_message"])
         d, latest = r["decision_by"], r["decision"]["vendor_message"]
         if d:
-            subject, latest = DECISION_MESSAGES[d["decision"]]
-            add(r, d["ts"], subject, latest, "Reviewer decision")
+            headline, latest = decision_mail(r, d["decision"])
+            add(r, d["ts"], headline, latest)
         since = datetime.fromisoformat((d or r)["ts"])
         if r["final"] == "Rejected" and (r["final_sub"] or "").startswith("Closed"):
-            add(r, (since + timedelta(days=FIX_DEADLINE_DAYS)).isoformat(timespec="seconds"), "Update on your vendor application",
-                f"Not approved: no reply within {FIX_DEADLINE_DAYS} days. If this was a mistake, submit a new application.", "Closed")
+            add(r, (since + timedelta(days=FIX_DEADLINE_DAYS)).isoformat(timespec="seconds"), "Rejected",
+                f"Your application is rejected because we did not hear back within {FIX_DEADLINE_DAYS} days. If this was a mistake, submit a new application.")
         elif r["waiting_on"] == "Vendor" and datetime.now() >= since + timedelta(days=REMINDER_DAYS):
-            add(r, (since + timedelta(days=REMINDER_DAYS)).isoformat(timespec="seconds"), "Reminder: action needed on your vendor application",
-                "Reminder: your application is still waiting for you.\n" + latest, "Reminder")
-    return sorted(messages, key=lambda m: m["when"], reverse=True)
+            add(r, (since + timedelta(days=REMINDER_DAYS)).isoformat(timespec="seconds"), "Reminder", "Reminder: your application is still waiting for you.\n" + latest)
+    for thread in threads.values():
+        thread["messages"].sort(key=lambda m: m["when"])
+        subject = f"Your vendor application ({thread['id']})"
+        for number, mail in enumerate(thread["messages"]):
+            mail["subject"] = subject if number == 0 else "Re: " + subject
+        thread.update(subject=subject, to=thread["to"] or "(no email given)", latest=thread["messages"][-1])
+    return sorted(threads.values(), key=lambda t: t["latest"]["when"], reverse=True)
 
 
 @app.get("/messages")
 def messages_page():
-    return render_template("messages.html", messages=vendor_messages(store.load_runs()), fix_deadline_days=FIX_DEADLINE_DAYS)
+    return render_template("messages.html", threads=vendor_messages(store.load_runs()), fix_deadline_days=FIX_DEADLINE_DAYS)
 
 
 @app.get("/export.csv")

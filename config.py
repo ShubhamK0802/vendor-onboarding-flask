@@ -160,3 +160,30 @@ EMBARGOED_COUNTRIES = {"KP", "IR", "SY", "CU"}
 ESCALATE_TO_REVIEW = {"NAME_MISMATCH"}  # if the vendor repeats these, a person reads their explanation (for example a letter of authorisation)
 FIX_DEADLINE_DAYS = 7
 REMINDER_DAYS = 3  # a fix request that is still unanswered after this many days gets a reminder
+
+# What a vendor is told when a REVIEWER decides. Worked out from what the checks found, so the reviewer types nothing,
+# and nothing about other vendors or our internal records is revealed.
+VENDOR_REASONS = {
+    "DUPLICATE_BANK_ACCOUNT": "we could not verify the bank account details you gave",
+    "BANK_DETAILS_CHANGED": "we could not verify the change to your bank account",
+    "DUPLICATE_KEY_NEW_NAME": "we could not match your company name to its tax registration",
+    "EXISTING_VENDOR": "we could not verify the changes to your company details",
+    "SHARED_CONTACT": "we could not verify your contact details",
+    "SOLE_PROP_NAME_REVIEW": "we could not match the bank account holder to your business",
+    "UNSUPPORTED_COUNTRY": "we do not yet onboard vendors from your country",
+    "NAME_NON_LATIN": "we could not compare the names you gave",
+    "BANK_COUNTRY_DIFFERS": "your bank is in a different country than your company",
+    "SANCTIONS_POSSIBLE": "we are unable to onboard this company",
+}
+VENDOR_DOCUMENTS = {
+    "DUPLICATE_BANK_ACCOUNT": "a bank letter or cancelled cheque showing your company name and account number",
+    "BANK_DETAILS_CHANGED": "a letter on your bank's letterhead confirming the new account",
+    "DUPLICATE_KEY_NEW_NAME": "your company registration certificate showing your current legal name",
+    "EXISTING_VENDOR": "your company registration certificate or a letter describing what changed",
+    "SHARED_CONTACT": "a phone number or email that belongs only to your company",
+    "SOLE_PROP_NAME_REVIEW": "a document showing that you own the business and hold the bank account",
+    "UNSUPPORTED_COUNTRY": "your company registration and tax registration documents",
+    "NAME_NON_LATIN": "your registration certificate and a bank letter with the names in Latin letters",
+    "BANK_COUNTRY_DIFFERS": "a bank letter confirming the account and why it is held in another country",
+    "SANCTIONS_POSSIBLE": "your company registration certificate and details of its owners",
+}

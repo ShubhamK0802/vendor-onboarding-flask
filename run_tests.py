@@ -124,7 +124,7 @@ first_try = run_pipeline(near_miss, [])
 check((first_try["status"], first_try["sub_status"]) == ("Pending", "Vendor to fix"), "status definitions: a near-miss name is first a vendor fix")
 asked = [(f["code"], f["message"]) for f in first_try["findings"]]
 second_try = run_pipeline(near_miss, [], asked)
-check(second_try["status"] == "Rejected" and "not fixed after resubmission" in second_try["vendor_message"], "status definitions: the same finding after being asked to fix it rejects")
+check(second_try["status"] == "Rejected" and "not fixed after your resubmission" in second_try["vendor_message"], "status definitions: the same finding after being asked to fix it rejects")
 check(outcome(quartz, asked) == ("Approved", None), "status definitions: a vendor who really fixes it is approved")
 mismatch = dict(quartz, bank_account_name="Zenith Traders")
 asked = [(f["code"], f["message"]) for f in run_pipeline(mismatch, [])["findings"]]
@@ -234,7 +234,7 @@ check(b"No submissions yet" in client.get("/dashboard").data, "web: reset emptie
 first = run_case("09_fix_near_miss_name")["run_id"]
 check(next(r for r in store.load_runs() if r["run_id"] == first)["final"] == "Pending" and b"match your company name exactly" in client.get(f"/run/{first}").data, "web: a near-miss name is first sent back to the vendor to fix")
 again = run_case("09_fix_near_miss_name", parent=first)["run_id"]
-check(next(r for r in store.load_runs() if r["run_id"] == again)["final"] == "Rejected" and b"not fixed after resubmission" in client.get(f"/run/{again}").data, "web: the same near-miss on the resubmission is rejected, and the vendor is told why")
+check(next(r for r in store.load_runs() if r["run_id"] == again)["final"] == "Rejected" and b"not fixed after your resubmission" in client.get(f"/run/{again}").data, "web: the same near-miss on the resubmission is rejected, and the vendor is told why")
 
 # ---- reviewer desk: order, filters, taking a submission, next-up, info-requested runs ----
 contact = run_case("14_review_shared_mobile_number")["run_id"]  # submitted first
@@ -269,7 +269,7 @@ check(b"Rejected by Priya" in done_page and next(r for r in store.load_runs() if
 client.post("/reset")
 
 
-# ---- messages to vendors (a simulated outbox): verdicts, reviewer decisions, reminders, the closing notice
+# ---- messages to vendors (a simulated outbox): one thread per application; verdicts, reviewer outcomes, reminders, the closing notice
 client.post("/reset")
 approved = run_case("01_approved_india_clean")["run_id"]
 fixing = run_case("04_fix_us_ein_dropped_zero")["run_id"]
@@ -280,11 +280,28 @@ with store.connect() as conn:
     conn.execute("UPDATE runs SET ts=? WHERE run_id=?", (days_ago(4), fixing))
     conn.execute("UPDATE runs SET ts=? WHERE run_id=?", (days_ago(8), closing_id))
 page = client.get("/messages").data.decode()
-check("Simulated: nothing is emailed" in page and "accounts@apexglobal.example" in page and page.count("Your vendor application is approved") == 1, "messages: the page says it is simulated, shows who it is to, and lists the approval once")
-check("Action needed on your vendor application" in page and "Your vendor application is under review" in page, "messages: a sent-back and an under-review submission each get their message")
-check(page.count("Reminder: action needed on your vendor application") == 1 and "no reply within 7 days" in page, "messages: the 4-day-old fix request gets one reminder; the 8-day-old one is closed with a notice")
+check("Simulated: nothing is emailed" in page and "accounts@apexglobal.example" in page and page.count("Your application is approved.") == 1, "messages: the page says it is simulated, shows who it is to, and lists the approval once")
+check("Your application is under review. We will reach back to you if anything is needed." in page and "Please fix" in page, "messages: an under-review submission is told it will be contacted if anything is needed; a sent-back one is told what to fix")
+check(page.count("Reminder: your application is still waiting") == 1 and "did not hear back within 7 days" in page, "messages: the 4-day-old fix request gets one reminder; the 8-day-old one is closed with a notice")
+
 client.post(f"/review/{reviewing}", data={"reviewer": "Asha", "decision": "Approved", "note": "Checked by phone"})
-check(client.get("/messages").data.decode().count("Your vendor application is approved") == 2, "messages: a reviewer's approval sends the vendor a message too")
+rejecting = run_case("14_review_shared_mobile_number")["run_id"]
+client.post(f"/review/{rejecting}", data={"reviewer": "Asha", "decision": "Rejected", "note": "internal: looks like a shell company"})
+asking = run_case("13_review_company_id_under_new_name")["run_id"]
+client.post(f"/review/{asking}", data={"reviewer": "Asha", "decision": "Info requested", "note": "internal: check the certificate"})
+page = client.get("/messages").data.decode()
+check(page.count("Your application is approved.") == 2, "messages: a reviewer's approval is sent to the vendor automatically")
+check("Your application is rejected because we could not verify your contact details." in page, "messages: a reviewer's rejection tells the vendor the reason, worked out from the findings")
+check("1. your company registration certificate showing your current legal name" in page and "Please resubmit with them on the Onboard vendor page." in page, "messages: a request for more information lists the documents needed, worked out from the findings")
+check("internal:" not in page and "different company" not in page and "another vendor" not in page, "messages: nothing the reviewer typed, and nothing about other vendors, reaches the vendor")
+
+parent = run_case("09_fix_near_miss_name")["run_id"]
+child = run_case("09_fix_near_miss_name", parent=parent)["run_id"]
+threads = {t["id"]: t for t in app.vendor_messages(store.load_runs())}
+thread = threads[parent]
+check(child not in threads and [m["run_id"] for m in thread["messages"]] == [parent, child] and thread["messages"][0]["subject"] == f"Your vendor application ({parent})" and thread["messages"][1]["subject"] == f"Re: Your vendor application ({parent})",
+      "messages: a corrected resubmission is a reply in the same thread, with the same subject and Re:")
+check(len(threads) == sum(1 for r in store.load_runs() if not r["parent_id"]), "messages: exactly one thread per application, however many resubmissions it has")
 client.post("/reset")
 check(b"No messages yet" in client.get("/messages").data, "messages: empty before the first submission")
 

@@ -9,12 +9,12 @@ from config import ESCALATE_TO_REVIEW, FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN
 
 def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
     if status == "Approved":
-        return "Approved."
+        return "Your application is approved."
     if status == "Rejected":
         if reject_reasons:
-            return "Not approved: " + "; ".join(reject_reasons) + ". If this was a mistake, submit a new application."
-        return "Not approved. Please contact support."
-    head = "Under review. We will contact you if we need anything." if sub_status == NEEDS_REVIEW else ""
+            return "Your application is rejected because " + "; ".join(reject_reasons) + ". If this was a mistake, submit a new application."
+        return "Your application is rejected."
+    head = "Your application is under review. We will reach back to you if anything is needed." if sub_status == NEEDS_REVIEW else ""
     if not fixes:
         return head
     todo = f"Please fix: {fixes[0]}" if len(fixes) == 1 else "Please fix:\n" + "\n".join(f"{i}. {fix}" for i, fix in enumerate(fixes, 1))
@@ -33,7 +33,7 @@ def decide(stage_results, previous=()):
     stuck = [f for f in unresolved if f["code"] not in ESCALATE_TO_REVIEW]
     reject_reasons = [REJECT_ON_ITS_OWN[f["code"]] for f in findings if f["code"] in REJECT_ON_ITS_OWN]
     if stuck:
-        reject_reasons.append("not fixed after resubmission: " + "; ".join(f["message"] for f in stuck))
+        reject_reasons.append("these were not fixed after your resubmission: " + "; ".join(f["message"] for f in stuck))
 
     if not findings:
         status, sub_status = "Approved", None
@@ -44,6 +44,8 @@ def decide(stage_results, previous=()):
     else:
         status, sub_status = "Pending", VENDOR_TO_FIX
 
+    if status == "Rejected" and red_flags >= 2:
+        reject_reasons.append("the details you gave contradict each other")
     fixes = [f["message"] for f in findings if f["level"] in (FIX, RED)]
     reviewer_notes = [f["message"] for f in findings if f["level"] >= REVIEW or f in escalated]
     if escalated:

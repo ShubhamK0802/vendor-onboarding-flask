@@ -1,0 +1,121 @@
+"""All persistence in one SQLite file (stdlib). Raw submissions stay in the DB; everything shown in the UI is masked."""
+import json
+import sqlite3
+import uuid
+from contextlib import closing
+from datetime import datetime
+from statistics import median
+
+from checks import company_key
+from config import VENDORS_ON_FILE
+
+DB_PATH = "onboarding.db"
+SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "entity_type", "country", "bank_code", "mobile", "email"]
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, country TEXT, status TEXT, sub_status TEXT,
+    rule_version TEXT, seconds REAL, decision TEXT, payload TEXT, snapshot TEXT, parent_id TEXT);
+CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY, run_id TEXT, decision TEXT, note TEXT, reviewer TEXT, ts TEXT);
+CREATE TABLE IF NOT EXISTS docs(run_id TEXT, slot TEXT, filename TEXT, data BLOB);
+CREATE TABLE IF NOT EXISTS vendors(company_key TEXT, company_name TEXT, bank_account_number TEXT, mobile TEXT, email TEXT);
+"""
+
+
+def connect():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.executescript(SCHEMA)
+    if not conn.execute("SELECT 1 FROM vendors").fetchone():  # an empty master is re-filled with the vendors that were already on file
+        conn.executemany("INSERT INTO vendors VALUES (:company_key, :company_name, :bank_account_number, :mobile, :email)", VENDORS_ON_FILE)
+        conn.commit()
+    return conn
+
+
+def query(sql, args=()):
+    with closing(connect()) as conn:
+        return [dict(row) for row in conn.execute(sql, args)]
+
+
+def now():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def mask_account(number):
+    digits = str(number or "")
+    return "****" + digits[-4:] if digits else ""
+
+
+def make_snapshot(submission):
+    return {**{f: submission.get(f) for f in SNAPSHOT_FIELDS}, "bank_account_number": mask_account(submission.get("bank_account_number"))}
+
+
+def save_run(submission, decision, seconds, parent_id=None, files=None):
+    """files: {slot: (filename, bytes)} - the uploaded documents, kept so a reviewer can open them."""
+    run_id = uuid.uuid4().hex[:8]
+    with closing(connect()) as conn, conn:
+        conn.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
+            run_id, now(), submission.get("company_name"), submission.get("country"), decision["status"], decision["sub_status"],
+            decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
+        conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
+    return run_id
+
+
+def save_decision(run_id, decision, note, reviewer):
+    with closing(connect()) as conn, conn:
+        conn.execute("INSERT INTO decisions(run_id, decision, note, reviewer, ts) VALUES (?,?,?,?,?)", (run_id, decision, note, reviewer, now()))
+
+
+def load_decisions():
+    return query("SELECT * FROM decisions ORDER BY id")
+
+
+def get_docs(run_id, with_data=True):
+    return query(f"SELECT slot, filename{', data' if with_data else ''} FROM docs WHERE run_id=?", (run_id,))
+
+
+def reset():
+    """Demo only (a real audit trail is never deletable): clears every run and decision, and restores the vendors on file."""
+    with closing(connect()) as conn, conn:
+        for table in ("runs", "decisions", "docs", "vendors"):
+            conn.execute(f"DELETE FROM {table}")
+
+
+def final_state(run):
+    """What a run is NOW, after reviewer decisions and vendor resubmissions (the rules' own verdict stays in status/sub_status)."""
+    d = run["decision_by"]
+    if run["superseded_by"]:
+        return {"final": "Superseded", "final_sub": f"replaced by {run['superseded_by']}", "waiting_on": "-"}
+    if d and d["decision"] in ("Approved", "Rejected"):
+        return {"final": d["decision"], "final_sub": f"{d['decision']} by reviewer", "waiting_on": "-"}
+    if d:
+        return {"final": "Pending", "final_sub": "Info requested from vendor", "waiting_on": "Vendor"}
+    if run["status"] == "Pending":
+        return {"final": "Pending", "final_sub": run["sub_status"], "waiting_on": "Reviewer" if run["sub_status"] == "In review" else "Vendor"}
+    return {"final": run["status"], "final_sub": None, "waiting_on": "-"}
+
+
+def load_runs():
+    """Oldest first. Each run carries its parsed decision, latest reviewer decision, and final state."""
+    runs = query("SELECT * FROM runs ORDER BY ts, rowid")
+    latest = {d["run_id"]: d for d in load_decisions()}
+    child = {r["parent_id"]: r["run_id"] for r in runs if r["parent_id"]}
+    for run in runs:
+        run.update(decision=json.loads(run["decision"]), payload=json.loads(run["payload"]), snapshot=json.loads(run["snapshot"]))
+        run["findings"] = run["decision"].get("findings", [])
+        run["codes"] = [f["code"] for f in run["findings"]]
+        run.update(decision_by=latest.get(run["run_id"]), superseded_by=child.get(run["run_id"]))
+        run.update(final_state(run))
+        run["decided_by"] = run["decision_by"]["reviewer"] if run["decision_by"] and run["final"] in ("Approved", "Rejected") else "rules engine"
+    return runs
+
+
+def known_vendors(runs):
+    """What the duplicate check compares against: the vendors on file plus everything finally approved (by the rules or a reviewer)."""
+    approved = [{"company_key": company_key(r["payload"]), "company_name": r["company"], "bank_account_number": r["payload"].get("bank_account_number"),
+                 "mobile": r["payload"].get("mobile"), "email": r["payload"].get("email")} for r in runs if r["final"] == "Approved"]
+    return query("SELECT * FROM vendors") + approved
+
+
+def median_review_wait_hours(runs):
+    waits = [(datetime.fromisoformat(r["decision_by"]["ts"]) - datetime.fromisoformat(r["ts"])).total_seconds() / 3600
+             for r in runs if r["decision_by"]]
+    return median(waits) if waits else None

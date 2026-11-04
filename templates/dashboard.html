@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Dashboard</h1>
+{% if not runs %}
+<div class="card empty">No runs yet. <a href="{{ url_for('submit_page') }}">Submit a vendor</a> and the results will appear here.</div>
+{% else %}
+<div class="metrics">
+  {% for label, value, help in metrics %}<div class="metric" title="{{ help }}"><span>{{ label }}</span><b>{{ value }}</b></div>{% endfor %}
+  <div class="metric" title="Runs the rules sent to a reviewer who has not decided yet"><span>Needs a reviewer decision</span><b>{{ to_decide }}</b></div>
+  <div class="metric" title="Runs sent back to the vendor to fix"><span>Needs a vendor fix</span><b>{{ to_fix }}</b></div>
+  <div class="metric" title="From submission to the reviewer's decision"><span>Median reviewer wait</span><b>{{ wait }}</b></div>
+</div>
+<p><a class="button secondary" href="{{ url_for('export_csv') }}">Export history (CSV)</a></p>
+
+<div class="grid">
+  <section class="card"><h2>Where vendors stand now</h2>
+    <table><thead><tr><th>Outcome</th><th>Vendors</th></tr></thead><tbody>{% for name, n in outcomes %}<tr><td>{{ name }}</td><td>{{ n }}</td></tr>{% endfor %}</tbody></table></section>
+  <section class="card"><h2>Top reasons for non-approval</h2>
+    {% if top %}<table><thead><tr><th>Reason</th><th>Runs</th></tr></thead><tbody>{% for code, n in top %}<tr><td>{{ reason_labels.get(code, code) }}</td><td>{{ n }}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p class="muted">No findings yet.</p>{% endif %}</section>
+</div>
+
+<section class="card">
+  <h2>History</h2>
+  <form method="get" class="inline">
+    <label>Show
+      <select name="show" onchange="this.form.submit()">{% for s in ['All', 'Approved', 'Pending', 'Rejected', 'Superseded'] %}<option {{ 'selected' if s == show }}>{{ s }}</option>{% endfor %}</select>
+    </label>
+  </form>
+  <table>
+    <thead><tr><th>When</th><th>Run</th><th>Company</th><th>Country</th><th>Outcome</th><th>Rules said</th><th>Decided by</th></tr></thead>
+    <tbody>
+      {% for r in history %}
+      <tr class="{{ 'sel' if picked and r.run_id == picked.run_id }}">
+        <td>{{ r.ts.replace('T', ' ') }}</td><td><a href="{{ url_for('dashboard', show=show, run=r.run_id) }}#detail">{{ r.run_id }}</a></td><td>{{ r.company }}</td><td>{{ r.country }}</td>
+        <td>{{ badge(r.final, r.final_sub) }}</td><td>{{ system_verdict(r) }}</td><td>{{ r.decided_by }}</td>
+      </tr>
+      {% else %}<tr><td colspan="7" class="muted">Nothing with this status.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if picked %}
+<section class="card" id="detail"><h2>{{ picked.company }}</h2>{% with run = picked %}{% include "_run.html" %}{% endwith %}</section>
+{% else %}
+<p class="muted">Click a run number to look at it in detail.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

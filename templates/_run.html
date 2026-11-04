@@ -1,0 +1,35 @@
+<div class="run">
+  <p>{{ badge(run.final, run.final_sub) }}</p>
+  <div class="note">{{ run.decision.vendor_message }}</div>
+  {% if run.decision_by %}
+  <p><b>Reviewer decision:</b> {{ run.decision_by.decision }} by {{ run.decision_by.reviewer }} at {{ run.decision_by.ts.replace('T', ' ') }}. Reason: {{ run.decision_by.note }}</p>
+  {% endif %}
+  {% if run.parent_id %}<p class="muted">Resubmission of run {{ run.parent_id }}</p>{% endif %}
+
+  <details>
+    <summary>Stage by stage</summary>
+    <ul class="plain">
+      {% for s in run.decision.stages %}
+      <li>{{ {'pass': '✅', 'flagged': '⚠️', 'skipped': '⏭️'}[s.status] }} {{ s.stage.replace('_', ' ') }}: {{ s.status }}{% if s.findings %} ({{ s.findings|length }} found){% endif %}{% if s.note %} <span class="muted">({{ s.note }})</span>{% endif %}</li>
+      {% else %}<li class="muted">Recorded before the stage log existed.</li>{% endfor %}
+    </ul>
+  </details>
+
+  <details {{ 'open' if run.findings }}>
+    <summary>Reviewer view (internal, the vendor does not see this)</summary>
+    {% if run.findings %}
+    <table>
+      <thead><tr><th>Level</th><th>Reason</th><th>Message</th></tr></thead>
+      <tbody>{% for f in run.findings %}<tr><td>{{ levels[f.level] }}</td><td>{{ reason_labels.get(f.code, f.code) }}</td><td>{{ f.message }}</td></tr>{% endfor %}</tbody>
+    </table>
+    {% if vendor_entered(run) %}<p><b>What the vendor entered:</b> {{ vendor_entered(run) }}</p>{% endif %}
+    {% else %}<p class="muted">No findings.</p>{% endif %}
+  </details>
+
+  {% set docs = docs_for(run.run_id) %}
+  {% if docs %}
+  <p><b>Documents</b></p>
+  <ul class="plain">{% for d in docs %}<li><a href="{{ url_for('download_doc', run_id=run.run_id, slot=d.slot) }}">{{ doc_slots.get(d.slot, d.slot) }}: {{ d.filename }}</a></li>{% endfor %}</ul>
+  {% endif %}
+  <p class="muted">Run {{ run.run_id }} · rule version {{ run.rule_version }} · rules took {{ '%.0f' % (run.seconds * 1000) }} ms</p>
+</div>

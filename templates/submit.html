@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="grid">
+  <section class="card">
+    <label>Is this a corrected resubmission of an earlier submission?
+      <select id="parent">
+        <option value="">No, a new vendor</option>
+        {% for r in waiting %}<option value="{{ r.run_id }}">{{ r.company }} ({{ r.final_sub }}, run {{ r.run_id }})</option>{% endfor %}
+      </select>
+    </label>
+    <p class="muted" id="parent-note" hidden>The form was filled in from the earlier submission. For safety the bank account number is not shown: please enter it again.</p>
+
+    <div class="tabs">
+      <button type="button" class="tab-btn on" data-tab="tab-form">Fill in a form</button>
+      <button type="button" class="tab-btn" data-tab="tab-sample">Ready-made sample or JSON file</button>
+    </div>
+
+    <form id="tab-form" class="tab" data-mode="form" autocomplete="off">
+      <div class="fields">
+        <label>Company name<input name="company_name"></label>
+        <label>Entity type<select name="entity_type">{% for e in entity %}<option>{{ e }}</option>{% endfor %}</select></label>
+        <label>Country<select name="country">{% for c in country %}<option>{{ c }}</option>{% endfor %}</select></label>
+        <label>Website (optional)<input name="website"></label>
+        <label>Email<input name="email" type="text"></label>
+        <label>Mobile number<input name="mobile"></label>
+        <label class="wide">Address<textarea name="address" rows="2"></textarea></label>
+        <label>Tax ID (GSTIN for India, EIN for the US)<input name="tax_id"></label>
+        <label>PAN (India only)<input name="pan"></label>
+        <label>Bank account holder name<input name="bank_account_name"></label>
+        <label>Bank account number<input name="bank_account_number"></label>
+        <label class="wide">Bank code (IFSC for India, routing number for the US)<input name="bank_code"></label>
+      </div>
+      <h3>Documents</h3>
+      <div class="fields">
+        {% for slot, text in doc_slots.items() %}<label>{{ text }}<input type="file" name="{{ slot }}"></label>{% endfor %}
+      </div>
+      <button class="primary">Run checks</button>
+    </form>
+
+    <form id="tab-sample" class="tab" data-mode="sample" hidden>
+      <label>Pick a ready-made sample
+        <select name="sample">{% for value, label in samples %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+      </label>
+      <label>...or upload a vendor submission (JSON file)<input type="file" name="json_file" accept=".json"></label>
+      <button class="primary">Run checks on the sample or file</button>
+    </form>
+    <p class="error" id="error" hidden></p>
+  </section>
+
+  <section class="card" id="result">
+    <h2 id="result-title">Live run view</h2>
+    <p class="muted" id="placeholder">Each check appears here as it runs. Fill in the form, or pick a ready-made sample and run it.</p>
+    <ol id="stages" class="stages"></ol>
+    <div id="outcome"></div>
+  </section>
+</div>
+{% endblock %}

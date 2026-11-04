@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vendor Onboarding Checker</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="brand" href="{{ url_for('submit_page') }}">Vendor Onboarding Checker</a>
+    <nav>
+      <a href="{{ url_for('submit_page') }}" class="{{ 'on' if request.endpoint == 'submit_page' }}">Submit a vendor</a>
+      <a href="{{ url_for('review_page') }}" class="{{ 'on' if request.endpoint == 'review_page' }}">Reviewer desk{% if n_reviewer %} <span class="count">{{ n_reviewer }}</span>{% endif %}</a>
+      <a href="{{ url_for('dashboard') }}" class="{{ 'on' if request.endpoint == 'dashboard' }}">Dashboard</a>
+      <a href="{{ url_for('about') }}" class="{{ 'on' if request.endpoint == 'about' }}">About</a>
+    </nav>
+  </div>
+</header>
+<main>
+  {% for category, message in get_flashed_messages(with_categories=true) %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+  {% block body %}{% endblock %}
+</main>
+<footer>
+  <details>
+    <summary>Demo tools</summary>
+    <form method="post" action="{{ url_for('reset') }}" onsubmit="return confirm('Clear every run and decision?')">
+      <p class="muted">Demo only: a real audit trail is never deletable. This clears all runs and decisions and restores the vendors already on file.</p>
+      <button class="secondary">Reset demo data</button>
+    </form>
+  </details>
+</footer>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>About</h1>
+<section class="card prose">
+  <h2>Who uses this</h2>
+  <ul>
+    <li><b>Vendors</b> fill in the form and upload documents. They see only the status and what they need to fix.</li>
+    <li><b>Reviewers</b> use the Reviewer desk: a queue of vendors needing a human, the evidence and documents, and Approve / Reject / Request more info with a required reason.</li>
+  </ul>
+
+  <h2>How a submission is decided</h2>
+  <p>Seven checks run in order: completeness, country routing, format checks, documents, identity checks, name match, duplicate check. Each finding has a level:</p>
+  <ul>
+    <li><b>Level 1:</b> the vendor can fix it (missing document, typo in a format).</li>
+    <li><b>Level 2:</b> needs human judgment (similar names, shared bank account or contact, a vendor that is already onboarded).</li>
+    <li><b>Level 3:</b> identity red flag (GSTIN and PAN disagree, tax ID from the wrong country).</li>
+  </ul>
+  <p><b>Approved</b> only when nothing at all is found. <b>Pending, resubmission required:</b> only Level 1 findings. <b>Pending, in review:</b> any Level 2, or exactly one Level 3. <b>Rejected:</b> two or more Level 3, or one Level 3 plus a missing document.</p>
+  <p>Anything the system cannot positively verify is never approved automatically: it goes back to the vendor, to a reviewer, or is rejected.</p>
+
+  <h2>What happens after the verdict</h2>
+  <ul>
+    <li>A reviewer's decision becomes the vendor's current status; the rules' original verdict is kept next to it.</li>
+    <li><i>Request more info</i> keeps the run open, waiting for the vendor.</li>
+    <li>A corrected <b>resubmission</b> is linked to the earlier run, which is then marked superseded.</li>
+    <li>Approved vendors join the list the duplicate check compares against. An already-onboarded company that submits again always goes to a reviewer, and a different bank account is called out.</li>
+  </ul>
+
+  <h2>Design choices</h2>
+  <ul>
+    <li><b>Fixed rules decide, not an AI.</b> Every outcome can be explained line by line and repeated exactly.</li>
+    <li><b>Thresholds are our own design</b> (names at least 80% similar go to a reviewer), kept in one config file. Rule version {{ rule_version }}.</li>
+    <li><b>Nothing is overwritten.</b> Reviewer decisions are separate records next to the original verdict.</li>
+    <li><b>Bank account numbers are masked</b> everywhere they are shown.</li>
+    <li>The history starts empty. Only the vendors already on file (for the duplicate check) exist before the first run.</li>
+  </ul>
+
+  <h2>Known limits</h2>
+  <ul>
+    <li>No live checks against tax registries, sanctions lists or bank-account ownership.</li>
+    <li>Documents are stored for the reviewer to open, but their contents are not read. A forged document of the right type would pass.</li>
+    <li>India and US only, one bank account per submission. No expiry tracking and no automatic reminders.</li>
+    <li>Data lives in a SQLite file; on free hosting it can reset on restart.</li>
+  </ul>
+</section>
+{% endblock %}

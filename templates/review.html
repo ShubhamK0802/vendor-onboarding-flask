@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Reviewer desk</h1>
+{% if not queue %}
+<div class="card empty">Nothing is waiting for a reviewer.</div>
+{% else %}
+<div class="card">
+  <p><b>{{ queue|length }}</b> vendor(s) need a human decision. Pick one to open it.</p>
+  <table>
+    <thead><tr><th>Submission</th><th>When</th><th>Company</th><th>What the vendor entered</th><th>Why</th></tr></thead>
+    <tbody>
+      {% for r in queue %}
+      <tr class="{{ 'sel' if r.run_id == picked.run_id }}">
+        <td><a href="{{ url_for('review_page', run=r.run_id) }}">{{ r.run_id }}</a></td><td>{{ r.ts.replace('T', ' ') }}</td><td>{{ r.company }}</td>
+        <td>{{ vendor_entered(r) }}</td><td>{{ r.decision.reviewer_notes|join('; ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="grid">
+  <section class="card"><h2>{{ picked.company }}</h2>{% with run = picked %}{% include "_run.html" %}{% endwith %}</section>
+  <section class="card">
+    <h2>Your decision</h2>
+    <form method="post" action="{{ url_for('review_decision', run_id=picked.run_id) }}">
+      <label>Your name (recorded with the decision)<input name="reviewer" placeholder="e.g. Priya Sharma" required></label>
+      <label>Reason (required, it goes in the audit trail)<textarea name="note" rows="4" required></textarea></label>
+      <div class="buttons">
+        <button class="primary" name="decision" value="Approved">Approve</button>
+        <button class="secondary" name="decision" value="Rejected">Reject</button>
+        <button class="secondary" name="decision" value="Info requested">Request more info</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endif %}
+
+<details class="card"><summary>Waiting on the vendor ({{ waiting|length }})</summary>
+  <p class="muted">The vendor fixes these and resubmits from the Submit page; the old run is then marked superseded.</p>
+  {% if waiting %}<table><thead><tr><th>Submission</th><th>When</th><th>Company</th><th>Status</th><th>What to fix</th></tr></thead>
+    <tbody>{% for r in waiting %}<tr><td>{{ r.run_id }}</td><td>{{ r.ts.replace('T', ' ') }}</td><td>{{ r.company }}</td><td>{{ r.final_sub }}</td><td>{{ reasons(r) }}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<p class="muted">None.</p>{% endif %}
+</details>
+<details class="card"><summary>Reviewer decisions so far ({{ decisions|length }})</summary>
+  {% if decisions %}<table><thead><tr><th>When</th><th>Submission</th><th>Decision</th><th>Reviewer</th><th>Reason</th></tr></thead>
+    <tbody>{% for d in decisions %}<tr><td>{{ d.ts.replace('T', ' ') }}</td><td>{{ d.run_id }}</td><td>{{ d.decision }}</td><td>{{ d.reviewer }}</td><td>{{ d.note }}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<p class="muted">None yet.</p>{% endif %}
+</details>
+{% endblock %}

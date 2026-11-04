@@ -1,0 +1,35 @@
+{
+  "company_name": "Lumina Global Private Limited",
+  "entity_type": "company",
+  "country": "IN",
+  "email": "ap@lumina.example",
+  "mobile": "9823456704",
+  "address": "12 MG Road, Bengaluru, Karnataka 560001",
+  "tax_id": "27LUMCG5678N1Z7",
+  "pan": "LUMCG5678N",
+  "bank_account_name": "Lumina Globe Private Limited",
+  "bank_account_number": "74000123456704",
+  "bank_code": "HDFC0001234",
+  "website": "https://www.apexglobal.example",
+  "documents": {
+    "tax_document": {
+      "filename": "apex_gst_certificate.pdf",
+      "file_type": "pdf",
+      "size_bytes": 184320,
+      "declared_type": "tax_document"
+    },
+    "registration": {
+      "filename": "apex_incorporation.pdf",
+      "file_type": "pdf",
+      "size_bytes": 220160,
+      "declared_type": "registration"
+    },
+    "voided_cheque": {
+      "filename": "apex_cheque.pdf",
+      "file_type": "pdf",
+      "size_bytes": 98304,
+      "declared_type": "voided_cheque"
+    },
+    "passbook": null
+  }
+}

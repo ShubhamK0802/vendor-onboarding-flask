@@ -14,7 +14,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 from markupsafe import Markup, escape  # noqa: E402
 
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, HIGH_PRIORITY_CODES, RED, REASON_LABELS, RULE_VERSION  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, HIGH_PRIORITY_CODES, NEEDS_REVIEW, RED, REASON_LABELS, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
 app = Flask(__name__)
@@ -26,8 +26,8 @@ COUNTRY_NAMES = {"IN": "India", "US": "United States", "DE": "Germany", "Other":
 ENTITY, COUNTRY = ["company", "llp", "partnership", "sole_proprietor", "trust"], list(COUNTRY_NAMES)
 DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT registration)", "registration": "Registration document",
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
-LEVELS = {1: "1 Vendor can fix", 2: "2 Needs a human", 3: "3 Red flag"}
-COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Superseded": "gray"}
+LEVELS = {1: "1 Vendor can fix", 2: "2 Needs review", 3: "3 Red flag"}
+COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Replaced": "gray"}
 SAMPLE_HINTS = {"10_existing_vendor_resubmits.json": "run 01 first", "13_company_id_new_name.json": "run 01 first"}
 PROGRESS = {}  # token -> live progress of one run. ponytail: in-memory, so one worker process; use the database if it must scale out
 
@@ -274,18 +274,15 @@ def dashboard():
     total = len(runs)
     pct = lambda n: f"{n / total:.0%}" if total else "0%"
     count = lambda **kw: sum(all(r[k] == v for k, v in kw.items()) for r in runs)
-    metrics = [("Checks run", total, "Every submission the system has processed"),
-               ("Straight-through", pct(count(status="Approved")), "Approved by the rules with no human involved"),
-               ("Needed a human", pct(count(sub_status="In review")), "The rules sent it to a reviewer"),
-               ("Sent back to fix", pct(count(sub_status="Resubmission required")), "The vendor can fix it and resubmit"),
-               ("Rejected", pct(count(status="Rejected")), "Identity red flags; not onboarded")]
-    wait = store.median_review_wait_hours(runs)
-    live = [r for r in runs if r["final"] != "Superseded"]
+    metrics = [("Approved automatically", count(status="Approved"), pct(count(status="Approved")), "The rules approved it with no human involved"),
+               ("Sent to a reviewer", count(sub_status=NEEDS_REVIEW), pct(count(sub_status=NEEDS_REVIEW)), "The rules could not decide, so a reviewer must"),
+               ("Sent back to vendor", count(sub_status=VENDOR_TO_FIX), pct(count(sub_status=VENDOR_TO_FIX)), "The vendor can fix it and resubmit"),
+               ("Rejected", count(status="Rejected"), pct(count(status="Rejected")), "Identity red flags; not onboarded")]
+    live = [r for r in runs if r["final"] != "Replaced"]
     show = request.args.get("show", "All")
     history = [r for r in reversed(runs) if show in ("All", r["final"])]
-    return render_template("dashboard.html", runs=runs, metrics=metrics, show=show, history=history,
-                           to_decide=count(waiting_on="Reviewer"), to_fix=count(waiting_on="Vendor"),
-                           wait=f"{wait:.1f} h" if wait is not None else "no decisions yet",
+    return render_template("dashboard.html", runs=runs, total=total, metrics=metrics, show=show, history=history,
+                           with_reviewer=count(waiting_on="Reviewer"), with_vendor=count(waiting_on="Vendor"),
                            outcomes=Counter(outcome(r) for r in live).most_common(),
                            top=Counter(c for r in runs for c in set(r["codes"])).most_common(),
                            picked=next((r for r in runs if r["run_id"] == request.args.get("run")), None))
@@ -295,7 +292,7 @@ def dashboard():
 def export_csv():
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["run", "when", "company", "country", "outcome", "system verdict", "decided by", "reasons", "resubmission of"])
+    writer.writerow(["run", "when", "company", "country", "status now", "automatic verdict", "decided by", "reasons", "resubmission of"])
     for r in store.load_runs():
         writer.writerow([r["run_id"], r["ts"], r["company"], r["country"], outcome(r), system_verdict(r), r["decided_by"], reasons(r), r["parent_id"] or ""])
     return Response(out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=vendor_onboarding_history.csv"})

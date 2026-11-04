@@ -4,7 +4,7 @@ from checks import (
     check_completeness, check_country, check_formats, check_documents,
     check_identity, check_name_match, check_duplicates,
 )
-from config import FIX, RED, REVIEW, RULE_VERSION
+from config import FIX, NEEDS_REVIEW, RED, REVIEW, RULE_VERSION, VENDOR_TO_FIX
 
 
 def build_vendor_message(status, sub_status, fixes):
@@ -12,7 +12,7 @@ def build_vendor_message(status, sub_status, fixes):
         return "Your vendor application is approved."
     if status == "Rejected":
         return "We are unable to approve this application. Please contact our support team."
-    if sub_status == "In review":
+    if sub_status == NEEDS_REVIEW:
         message = "Your application is under review by our team. We will contact you if we need anything."
     else:
         message = "We need a few changes before we can approve your application."
@@ -34,9 +34,9 @@ def decide(stage_results):
     elif red_flags >= 2 or (red_flags >= 1 and missing_doc):
         status, sub_status = "Rejected", None
     elif red_flags == 1 or REVIEW in levels:
-        status, sub_status = "Pending", "In review"
+        status, sub_status = "Pending", NEEDS_REVIEW
     else:
-        status, sub_status = "Pending", "Resubmission required"
+        status, sub_status = "Pending", VENDOR_TO_FIX
 
     fixes = [f["message"] for f in findings if f["level"] == FIX]
     reviewer_notes = [f["message"] for f in findings if f["level"] >= REVIEW]

@@ -26,14 +26,14 @@
     <li><b>Level 2:</b> needs human judgment (similar names, shared bank account or contact, a vendor that is already onboarded).</li>
     <li><b>Level 3:</b> identity red flag (GSTIN and PAN disagree, tax ID from the wrong country).</li>
   </ul>
-  <p><b>Approved</b> only when nothing at all is found. <b>Pending, resubmission required:</b> only Level 1 findings. <b>Pending, in review:</b> any Level 2, or exactly one Level 3. <b>Rejected:</b> two or more Level 3, or one Level 3 plus a missing document.</p>
+  <p><b>Approved</b> only when nothing at all is found. <b>Pending: Vendor to fix</b> when there are only Level 1 findings. <b>Pending: Needs review</b> for any Level 2, or exactly one Level 3. <b>Rejected:</b> two or more Level 3, or one Level 3 plus a missing document.</p>
   <p>Anything the system cannot positively verify is never approved automatically: it goes back to the vendor, to a reviewer, or is rejected.</p>
 
   <h2>What happens after the verdict</h2>
   <ul>
     <li>A reviewer's decision becomes the vendor's current status; the rules' original verdict is kept next to it.</li>
     <li><i>Request more info</i> keeps the run open, waiting for the vendor.</li>
-    <li>A corrected <b>resubmission</b> is linked to the earlier run, which is then marked superseded.</li>
+    <li>A corrected <b>resubmission</b> is linked to the earlier run, which is then marked replaced.</li>
     <li>Approved vendors join the list the duplicate check compares against. An already-onboarded company that submits again always goes to a reviewer, and a different bank account is called out.</li>
   </ul>
 

@@ -121,3 +121,7 @@ VENDORS_ON_FILE = [{
 
 # Reviewer desk: these findings put money at risk, so such runs are shown first (a red-flag finding does too).
 HIGH_PRIORITY_CODES = {"DUPLICATE_BANK_ACCOUNT", "BANK_DETAILS_CHANGED", "DUPLICATE_KEY_NEW_NAME", "BANK_COUNTRY_DIFFERS"}
+
+# The two reasons a run can be Pending (status names shown everywhere).
+NEEDS_REVIEW = "Needs review"
+VENDOR_TO_FIX = "Vendor to fix"

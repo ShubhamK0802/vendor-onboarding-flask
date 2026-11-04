@@ -80,7 +80,7 @@ bad = copy.deepcopy(INDIA)
 bad.update(tax_id="29ABCCA1234D1", company_name="Fresh Vendor Pvt Ltd", pan="QWERT1234Y", bank_account_name="Fresh Vendor Pvt Ltd", bank_account_number="11122233344455")
 pending = submit(bad)
 child = submit(bad, parent_id=pending, files={"tax_document": ("w9.pdf", b"%PDF-1.4 test")})
-check(run(pending)["final"] == "Superseded" and run(pending)["superseded_by"] == child, "resubmission supersedes the earlier run")
+check(run(pending)["final"] == "Replaced" and run(pending)["superseded_by"] == child, "resubmission supersedes the earlier run")
 check(store.get_docs(child)[0]["data"] == b"%PDF-1.4 test", "uploaded document is stored and retrievable")
 check(store.mask_account("50100234567891") == "****7891" and "50100234567891" not in str(run(first)["snapshot"]), "account numbers are masked in what the UI reads")
 

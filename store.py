@@ -4,10 +4,9 @@ import sqlite3
 import uuid
 from contextlib import closing
 from datetime import datetime
-from statistics import median
 
 from checks import company_key
-from config import VENDORS_ON_FILE
+from config import NEEDS_REVIEW, VENDORS_ON_FILE
 
 DB_PATH = "onboarding.db"
 SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "entity_type", "country", "bank_code", "mobile", "email"]
@@ -107,13 +106,13 @@ def final_state(run):
     """What a run is NOW, after reviewer decisions and vendor resubmissions (the rules' own verdict stays in status/sub_status)."""
     d = run["decision_by"]
     if run["superseded_by"]:
-        return {"final": "Superseded", "final_sub": f"replaced by {run['superseded_by']}", "waiting_on": "-"}
+        return {"final": "Replaced", "final_sub": f"by resubmission {run['superseded_by']}", "waiting_on": "-"}
     if d and d["decision"] in ("Approved", "Rejected"):
         return {"final": d["decision"], "final_sub": f"{d['decision']} by reviewer", "waiting_on": "-"}
     if d:
         return {"final": "Pending", "final_sub": "Info requested from vendor", "waiting_on": "Vendor"}
     if run["status"] == "Pending":
-        return {"final": "Pending", "final_sub": run["sub_status"], "waiting_on": "Reviewer" if run["sub_status"] == "In review" else "Vendor"}
+        return {"final": "Pending", "final_sub": run["sub_status"], "waiting_on": "Reviewer" if run["sub_status"] == NEEDS_REVIEW else "Vendor"}
     return {"final": run["status"], "final_sub": None, "waiting_on": "-"}
 
 
@@ -128,7 +127,7 @@ def load_runs():
         run["codes"] = [f["code"] for f in run["findings"]]
         run.update(decision_by=latest.get(run["run_id"]), superseded_by=child.get(run["run_id"]))
         run.update(final_state(run))
-        run["decided_by"] = run["decision_by"]["reviewer"] if run["decision_by"] and run["final"] in ("Approved", "Rejected") else "rules engine"
+        run["decided_by"] = run["decision_by"]["reviewer"] if run["decision_by"] and run["final"] in ("Approved", "Rejected") else "Automatic"
     return runs
 
 
@@ -137,9 +136,3 @@ def known_vendors(runs):
     approved = [{"company_key": company_key(r["payload"]), "company_name": r["company"], "bank_account_number": r["payload"].get("bank_account_number"),
                  "mobile": r["payload"].get("mobile"), "email": r["payload"].get("email")} for r in runs if r["final"] == "Approved"]
     return query("SELECT * FROM vendors") + approved
-
-
-def median_review_wait_hours(runs):
-    waits = [(datetime.fromisoformat(r["decision_by"]["ts"]) - datetime.fromisoformat(r["ts"])).total_seconds() / 3600
-             for r in runs if r["decision_by"]]
-    return median(waits) if waits else None

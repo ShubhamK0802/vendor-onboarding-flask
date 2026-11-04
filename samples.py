@@ -1,5 +1,5 @@
-"""The demo vendors. CASES is the full test matrix (every rule has a case); only the five SAMPLES below are shown in the app.
-`python samples.py` writes the five sample files, the demo registry and the demo watchlist.
+"""The demo vendors. CASES is the full test matrix (every rule has a case); only the six SAMPLES below are shown in the app.
+`python samples.py` writes the six sample files, the demo registry and the demo watchlist.
 
 Sample files:        sample_inputs/*.json
 Demo tax registry:   registry.json   (SIMULATED: a real deployment calls the tax authorities)
@@ -126,14 +126,15 @@ CASES = [
 ]
 
 
-# The five samples in the app: one clean vendor and four edge cases, each a different kind of problem.
+# The samples in the app: one clean vendor and five edge cases, each a different kind of problem.
 # (sample file, the case in CASES it is written from)
 SAMPLES = [
-    ("01_approved_india_clean", "01_approved_india_clean"),                                          # the happy path
-    ("02_edge_name_nearly_matches_bank_account", "09_fix_near_miss_name"),                           # sent back, then rejected if it repeats (lookalike names are a fraud tactic)
+    ("01_approved_india_clean", "01_approved_india_clean"),                                              # the happy path
+    ("02_edge_name_nearly_matches_bank_account", "09_fix_near_miss_name"),                               # sent back, then rejected if it repeats (lookalike names are a fraud tactic)
     ("03_edge_existing_vendor_changes_bank_account", "11_review_existing_vendor_changes_bank_account"),  # a reviewer must verify it (bank-change fraud); submit 01 first
-    ("04_edge_identity_fields_contradict", "19_reject_two_contradictions"),                          # GSTIN, PAN and entity type disagree: rejected
-    ("05_edge_name_on_sanctions_watchlist", "21_reject_sanctions_name_match"),                       # hard policy: rejected
+    ("04_edge_identity_fields_contradict", "19_reject_two_contradictions"),                              # GSTIN, PAN and entity type disagree: rejected
+    ("05_edge_bank_account_used_by_another_vendor", "12_review_bank_account_shared_with_another_vendor"),  # one account behind two vendors: a reviewer must look
+    ("06_edge_tax_registration_cancelled", "23_reject_cancelled_registration"),                          # the tax authority shows it as cancelled: rejected
 ]
 
 

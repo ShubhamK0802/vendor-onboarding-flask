@@ -1,31 +1,31 @@
 {
-  "company_name": "Northern Star Arms Trading Limited",
+  "company_name": "Orbit Exports Private Limited",
   "entity_type": "company",
   "country": "IN",
-  "email": "accounts@northern.example",
-  "mobile": "9823456712",
+  "email": "accounts@orbit.example",
+  "mobile": "9823456713",
   "address": "12 MG Road, Bengaluru, Karnataka 560001",
-  "tax_id": "27NORCN3457R1Z8",
-  "pan": "NORCN3457R",
-  "bank_account_name": "Northern Star Arms Trading Limited",
-  "bank_account_number": "80000123456712",
+  "tax_id": "27ORBCO5612S1ZL",
+  "pan": "ORBCO5612S",
+  "bank_account_name": "Orbit Exports Private Limited",
+  "bank_account_number": "81000123456713",
   "bank_code": "HDFC0001234",
-  "website": "https://www.northern.example",
+  "website": "https://www.orbit.example",
   "documents": {
     "tax_document": {
-      "filename": "northern_tax.pdf",
+      "filename": "orbit_tax.pdf",
       "file_type": "pdf",
       "size_bytes": 184320,
       "declared_type": "tax_document"
     },
     "registration": {
-      "filename": "northern_registration.pdf",
+      "filename": "orbit_registration.pdf",
       "file_type": "pdf",
       "size_bytes": 220160,
       "declared_type": "registration"
     },
     "voided_cheque": {
-      "filename": "northern_cheque.pdf",
+      "filename": "orbit_cheque.pdf",
       "file_type": "pdf",
       "size_bytes": 98304,
       "declared_type": "voided_cheque"

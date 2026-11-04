@@ -9,6 +9,8 @@ import tempfile
 import time
 
 import store
+
+os.environ["MAIL_WORKER"] = "0"  # the background sender is driven by hand in the tests
 from decide import parse_submission, run_pipeline
 from datetime import datetime, timedelta
 
@@ -269,44 +271,114 @@ check(b"Rejected by Priya" in done_page and next(r for r in store.load_runs() if
 client.post("/reset")
 
 
-# ---- messages to vendors (a simulated outbox): one thread per application; verdicts, reviewer outcomes, reminders, the closing notice
+# ---- the outbox and the background sender (driven by hand here; in the app a worker thread does the same every few seconds)
+import mailer  # noqa: E402
+
+outbox = lambda: store.query("SELECT * FROM outbox ORDER BY id")
+of = lambda run_id: [row for row in outbox() if row["run_id"] == run_id]
 client.post("/reset")
+check(outbox() == [], "outbox: empty after a reset")
 approved = run_case("01_approved_india_clean")["run_id"]
+check([(row["event"], row["status"]) for row in outbox()] == [("verdict", "queued")], "outbox: a verdict is queued the moment a submission is processed")
+mailer.deliver_queued()
+row = outbox()[0]
+check(row["status"] == "sent" and row["transport"] == "simulated" and row["sent_at"] and row["body"] == "Your application is approved.", "outbox: the sender sends it (simulated, as no mail service is set up) and records the time")
+mailer.deliver_queued()
+check(len(outbox()) == 1 and outbox()[0]["attempts"] == 1, "outbox: a sent message is never sent twice")
+
 fixing = run_case("04_fix_us_ein_dropped_zero")["run_id"]
 closing_id = run_case("05_fix_wrong_document_in_slot")["run_id"]
-reviewing = run_case("12_review_bank_account_shared_with_another_vendor")["run_id"]
 days_ago = lambda days: (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
 with store.connect() as conn:
     conn.execute("UPDATE runs SET ts=? WHERE run_id=?", (days_ago(4), fixing))
     conn.execute("UPDATE runs SET ts=? WHERE run_id=?", (days_ago(8), closing_id))
+mailer.sweep()
+mailer.sweep()
+events = [row["event"] for row in outbox()]
+check(events.count("reminder") == 1 and events.count("closed") == 1, "background sender: a 4-day-old fix request gets one reminder and an 8-day-old one a closing notice, however often it checks")
+
+reviewing = run_case("12_review_bank_account_shared_with_another_vendor")["run_id"]
+mailer.deliver_queued()
 page = client.get("/messages").data.decode()
+check("Simulated: no mail service" in page and "accounts@apexglobal.example" in page and "Sent (simulated)" in page and page.count("Your application is approved.") == 1, "messages: the page says the mail service is simulated, shows who it is to, and the status of each message")
+check("Your application is under review. We will reach back to you if anything is needed." in page and "Please fix" in page and page.count("Reminder: your application is still waiting") == 1 and "did not hear back within 7 days" in page,
+      "messages: under review, please-fix, reminder and closing notice all went out")
 shown_to_vendor = "Your application is under review. We will reach back to you if anything is needed."
 check(shown_to_vendor in client.get(f"/run/{reviewing}").data.decode() and shown_to_vendor not in client.get(f"/review?run={reviewing}").data.decode()
       and shown_to_vendor not in client.get(f"/dashboard?run={reviewing}").data.decode(), "the vendor's message shows on the vendor's result page, not on the reviewer desk or the dashboard detail")
-check("Simulated: nothing is emailed" in page and "accounts@apexglobal.example" in page and page.count("Your application is approved.") == 1, "messages: the page says it is simulated, shows who it is to, and lists the approval once")
-check("Your application is under review. We will reach back to you if anything is needed." in page and "Please fix" in page, "messages: an under-review submission is told it will be contacted if anything is needed; a sent-back one is told what to fix")
-check(page.count("Reminder: your application is still waiting") == 1 and "did not hear back within 7 days" in page, "messages: the 4-day-old fix request gets one reminder; the 8-day-old one is closed with a notice")
 
 client.post(f"/review/{reviewing}", data={"reviewer": "Asha", "decision": "Approved", "note": "Checked by phone"})
 rejecting = run_case("14_review_shared_mobile_number")["run_id"]
 client.post(f"/review/{rejecting}", data={"reviewer": "Asha", "decision": "Rejected", "note": "internal: looks like a shell company"})
 asking = run_case("13_review_company_id_under_new_name")["run_id"]
 client.post(f"/review/{asking}", data={"reviewer": "Asha", "decision": "Info requested", "note": "internal: check the certificate"})
+check(all(row["status"] == "queued" for row in of(reviewing)[1:] + of(rejecting)[1:] + of(asking)[1:]) and len(of(asking)) == 2, "outbox: a reviewer's decision queues a message to the vendor automatically")
+mailer.deliver_queued()
 page = client.get("/messages").data.decode()
-check(page.count("Your application is approved.") == 2, "messages: a reviewer's approval is sent to the vendor automatically")
+check(page.count("Your application is approved.") == 2, "messages: a reviewer's approval is sent to the vendor")
 check("Your application is rejected because we could not verify your contact details." in page, "messages: a reviewer's rejection tells the vendor the reason, worked out from the findings")
 check("1. your company registration certificate showing your current legal name" in page and "Please resubmit with them on the Onboard vendor page." in page, "messages: a request for more information lists the documents needed, worked out from the findings")
 check("internal:" not in page and "different company" not in page and "another vendor" not in page, "messages: nothing the reviewer typed, and nothing about other vendors, reaches the vendor")
 
 parent = run_case("09_fix_near_miss_name")["run_id"]
 child = run_case("09_fix_near_miss_name", parent=parent)["run_id"]
-threads = {t["id"]: t for t in app.vendor_messages(store.load_runs())}
-thread = threads[parent]
-check(child not in threads and [m["run_id"] for m in thread["messages"]] == [parent, child] and thread["messages"][0]["subject"] == f"Your vendor application ({parent})" and thread["messages"][1]["subject"] == f"Re: Your vendor application ({parent})",
-      "messages: a corrected resubmission is a reply in the same thread, with the same subject and Re:")
-check(len(threads) == sum(1 for r in store.load_runs() if not r["parent_id"]), "messages: exactly one thread per application, however many resubmissions it has")
+by_thread = {t["id"]: t for t in mailer.threads()}
+thread = by_thread[parent]
+check(child not in by_thread and [m["run_id"] for m in thread["messages"]] == [parent, child] and thread["messages"][0]["subject"] == f"Your vendor application ({parent})"
+      and thread["messages"][1]["subject"] == f"Re: Your vendor application ({parent})", "messages: a corrected resubmission is a reply in the same thread, with the same subject and Re:")
+check(len(by_thread) == sum(1 for r in store.load_runs() if not r["parent_id"]), "messages: exactly one thread per application, however many resubmissions it has")
+
+nobody = run_case("25_fix_incomplete_form_with_wrong_document")["run_id"]
+mailer.deliver_queued()
+check(of(nobody)[0]["status"] == "noaddr" and "Not sent: no email address" in client.get("/messages").data.decode(), "outbox: a submission with no email address is shown as not sent, honestly")
+
+failing = run_case("19_reject_two_contradictions")["run_id"]
+real_send = mailer.send
+
+
+def broken(row):
+    raise OSError("mail service down")
+
+
+mailer.send = broken
+for _ in range(3):
+    mailer.deliver_queued()
+mailer.send = real_send
+row = of(failing)[0]
+check(row["status"] == "failed" and row["attempts"] == 3 and "mail service down" in row["error"], "outbox: a send that keeps failing is retried three times, then shown as failed")
+
+# a real provider: only for addresses on the allowed list, as a reply in the same thread (the network call is replaced by a stand-in here)
+captured = []
+
+
+class Reply:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return b'{"messageId": "<abc123@brevo>"}'
+
+
+real_urlopen = mailer.urllib.request.urlopen
+mailer.urllib.request.urlopen = lambda request, timeout=None: (captured.append(request), Reply())[1]
+os.environ.update(BREVO_API_KEY="test-key", MAIL_FROM="sender@example.org", MAIL_ALLOWLIST="Shubham@Example.org, other@example.org")
+mine = run_web(mode="json", json_file=(io.BytesIO(json.dumps(dict(CASE["15_review_sole_proprietor_personal_account"], email="shubham@example.org")).encode()), "mine.json"))["run_id"]
+client.post(f"/review/{mine}", data={"reviewer": "Asha", "decision": "Approved", "note": "ok ok ok"})
+stranger = run_case("16_review_unsupported_country")["run_id"]
+mailer.deliver_queued()
+os.environ.pop("BREVO_API_KEY"), os.environ.pop("MAIL_FROM"), os.environ.pop("MAIL_ALLOWLIST")
+mailer.urllib.request.urlopen = real_urlopen
+first_request, second_request = captured[0], captured[1]
+sent = json.loads(first_request.data)
+check(len(captured) == 2 and [row["transport"] for row in of(mine)] == ["brevo", "brevo"] and of(stranger)[0]["transport"] == "simulated", "real mail: only the allowed address goes out for real; any other address stays simulated")
+check(first_request.full_url == "https://api.brevo.com/v3/smtp/email" and first_request.get_header("Api-key") == "test-key" and sent["to"] == [{"email": "shubham@example.org"}]
+      and sent["sender"] == {"email": "sender@example.org"} and sent["subject"] == f"Your vendor application ({mine})" and "headers" not in sent, "real mail: the request is shaped for the provider")
+check(json.loads(second_request.data)["headers"] == {"In-Reply-To": "<abc123@brevo>", "References": "<abc123@brevo>"} and json.loads(second_request.data)["subject"].startswith("Re: "), "real mail: the second mail is a reply in the same conversation")
 client.post("/reset")
-check(b"No messages yet" in client.get("/messages").data, "messages: empty before the first submission")
+check(b"No messages yet" in client.get("/messages").data and outbox() == [], "messages: empty after a reset")
 
 print("ALL PASSED" if not failed else f"FAILED: {failed}")
 sys.exit(1 if failed else 0)

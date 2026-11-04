@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY, run_id TEXT, decisi
 CREATE TABLE IF NOT EXISTS docs(run_id TEXT, slot TEXT, filename TEXT, data BLOB);
 CREATE TABLE IF NOT EXISTS vendor_ids(company_key TEXT PRIMARY KEY, vendor_id TEXT);
 CREATE TABLE IF NOT EXISTS run_vendor(run_id TEXT PRIMARY KEY, vendor_id TEXT);
+CREATE TABLE IF NOT EXISTS outbox(id INTEGER PRIMARY KEY, thread_id TEXT, run_id TEXT, event TEXT, recipient TEXT, subject TEXT, body TEXT, headline TEXT,
+    created TEXT, status TEXT, sent_at TEXT, attempts INTEGER, error TEXT, transport TEXT, provider_id TEXT, UNIQUE(run_id, event));
 CREATE TABLE IF NOT EXISTS claims(run_id TEXT PRIMARY KEY, reviewer TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS vendors(company_key TEXT, company_name TEXT, bank_account_number TEXT, mobile TEXT, email TEXT, address TEXT);
 """
@@ -81,8 +83,9 @@ def vendor_for(conn, submission, key, parent_id):
 
 def save_decision(run_id, decision, note, reviewer):
     with closing(connect()) as conn, conn:
-        conn.execute("INSERT INTO decisions(run_id, decision, note, reviewer, ts) VALUES (?,?,?,?,?)", (run_id, decision, note, reviewer, now()))
+        decision_id = conn.execute("INSERT INTO decisions(run_id, decision, note, reviewer, ts) VALUES (?,?,?,?,?)", (run_id, decision, note, reviewer, now())).lastrowid
         conn.execute("DELETE FROM claims WHERE run_id=?", (run_id,))  # a decided run is nobody's any more
+    return decision_id
 
 
 def claims():
@@ -118,7 +121,7 @@ def get_docs(run_id, with_data=True):
 def reset():
     """Demo only (a real audit trail is never deletable): clears every run and decision, and restores the vendors on file."""
     with closing(connect()) as conn, conn:
-        for table in ("runs", "decisions", "docs", "vendors", "claims", "vendor_ids", "run_vendor"):
+        for table in ("runs", "decisions", "docs", "vendors", "claims", "vendor_ids", "run_vendor", "outbox"):
             conn.execute(f"DELETE FROM {table}")
 
 

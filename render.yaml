@@ -10,3 +10,9 @@ services:
         value: 3.12.3
       - key: SECRET_KEY
         generateValue: true
+      - key: BREVO_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_ALLOWLIST
+        sync: false

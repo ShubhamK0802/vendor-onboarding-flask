@@ -1,21 +1,22 @@
 {% extends "base.html" %}
 {% block body %}
 <h1>Messages to vendors</h1>
-<p class="muted">Simulated: nothing is emailed. Each application is one email thread. Every update goes to the vendor automatically: the verdict first, then the reviewer's outcome (approved, rejected with the reason, or the documents we need), a reminder {{ reminder_days }} days after an unanswered fix request, and a closing notice after {{ fix_deadline_days }} days. Click a thread to read it.</p>
+<p class="muted">Each application is one email thread. Every update is saved in an outbox and sent automatically by a background worker: the verdict first, then the reviewer's outcome (approved, rejected with the reason, or the documents we need), a reminder {{ reminder_days }} days after an unanswered fix request, and a closing notice after {{ fix_deadline_days }} days. Click a thread to read it.</p>
+<p><b>Mail service:</b> {{ transport }}</p>
 {% if not threads %}
 <div class="card empty">No messages yet. They appear as submissions are processed.</div>
 {% else %}
 <div class="card">
   <table>
-    <thead><tr><th>Latest</th><th>To</th><th>Thread</th><th>Latest update</th><th>Submission ID</th></tr></thead>
+    <thead><tr><th>Latest</th><th>To</th><th>Thread</th><th>Latest update</th><th>Status</th></tr></thead>
     <tbody>
       {% for t in threads %}
       <tr>
-        <td>{{ t.latest.when.replace('T', ' ') }}</td><td>{{ t.to }}</td>
+        <td>{{ t.latest.created.replace('T', ' ') }}</td><td>{{ t.to }}</td>
         <td><details><summary>{{ t.subject }} <span class="muted">({{ t.messages|length }} {{ 'message' if t.messages|length == 1 else 'messages' }})</span></summary>
-          {% for m in t.messages %}<div class="note"><span class="muted">{{ m.when.replace('T', ' ') }} · to {{ t.to }} ({{ t.company }})</span><br><b>{{ m.subject }}</b><br><br>{{ m.body }}</div>{% endfor %}
+          {% for m in t.messages %}<div class="note"><span class="muted">{{ m.created.replace('T', ' ') }} · to {{ t.to }} ({{ t.company }}) · {{ m.label }}{% if m.sent_at %} at {{ m.sent_at.replace('T', ' ') }}{% endif %}</span>{% if m.error %}<br><span class="muted">{{ m.error }}</span>{% endif %}<br><b>{{ m.subject }}</b><br><br>{{ m.body }}</div>{% endfor %}
         </details></td>
-        <td>{{ t.latest.headline }}</td><td><a href="{{ url_for('dashboard', run=t.latest.run_id) }}#detail">{{ t.latest.run_id }}</a></td>
+        <td>{{ t.latest.headline }}</td><td>{{ t.latest.label }}</td>
       </tr>
       {% endfor %}
     </tbody>

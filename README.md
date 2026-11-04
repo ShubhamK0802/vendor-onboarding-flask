@@ -19,3 +19,5 @@ submits again; six samples: one clean vendor and five edge cases taken from the 
 **Verification:** `registry.json` (simulated tax registry) and `sanctions.json` (fictional watchlist) are demo data written by `python samples.py`; set `VIES_LIVE=1` to check German VAT IDs against the real EU VIES service.
 
 **IDs:** a submission ID is a random code per submission; a vendor ID (V + country + 6 letters/digits, e.g. VIN7A3D49) is issued to every applicant on its first submission and stays the same for all of that company's later submissions and corrected resubmissions.
+
+**Mail:** messages are queued in an outbox and sent by a background worker (`mailer.py`). Sending is simulated unless `BREVO_API_KEY` and `MAIL_FROM` are set, and even then only to addresses in `MAIL_ALLOWLIST` (comma separated): a public copy of the app can never email strangers. `MAIL_WORKER=0` switches the worker off.

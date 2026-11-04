@@ -13,8 +13,9 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))  # the database and sample_
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, url_for, Response  # noqa: E402
 from markupsafe import Markup, escape  # noqa: E402
 
+import mailer  # noqa: E402
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, REMINDER_DAYS, RULE_VERSION, VENDOR_DOCUMENTS, VENDOR_REASONS, VENDOR_TO_FIX  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, REMINDER_DAYS, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
 app = Flask(__name__)
@@ -150,6 +151,7 @@ def worker(token, submission, files, parent_id, previous):
             time.sleep(STAGE_PAUSE)
         seconds = max(time.perf_counter() - started - STAGE_PAUSE * len(stages), 0)
         progress["run_id"] = store.save_run(submission, build_decision(stages, previous), seconds, parent_id=parent_id, files=files)
+        mailer.enqueue_verdict(progress["run_id"])  # the vendor is told the verdict; a background worker sends it
     except Exception as error:  # never leave the page spinning
         progress["error"] = f"Something went wrong: {error}"
     progress["done"] = True
@@ -289,7 +291,7 @@ def review_decision(run_id):
     elif decision not in ("Approved", "Rejected", "Info requested"):
         flash("Unknown decision.", "error")
     else:
-        store.save_decision(run_id, decision, note, reviewer)
+        mailer.enqueue_decision(run_id, store.save_decision(run_id, decision, note, reviewer))  # and told the outcome, in the same thread
         flash(f"{run['company']}: {decision} by {reviewer}.", "ok")
     return redirect(url_for("review_page", **back))  # opens the next one in the same order
 
@@ -318,65 +320,9 @@ def dashboard():
                            picked=next((r for r in runs if r["run_id"] == request.args.get("run")), None))
 
 
-VERDICT_HEADLINES = {("Approved", None): "Approved", ("Pending", NEEDS_REVIEW): "Under review", ("Pending", VENDOR_TO_FIX): "Action needed", ("Rejected", None): "Rejected"}
-
-
-def unique(items):
-    return list(dict.fromkeys(items))
-
-
-def decision_mail(run, decision):
-    """What the vendor is told when a reviewer decides. Worked out from the findings: the reviewer types nothing, and no internal detail leaks."""
-    if decision == "Approved":
-        return "Approved", "Your application is approved."
-    if decision == "Rejected":
-        reasons = unique(VENDOR_REASONS[c] for c in run["codes"] if c in VENDOR_REASONS) or ["we could not verify your information"]
-        return "Rejected", "Your application is rejected because " + "; ".join(reasons) + "."
-    documents = unique(VENDOR_DOCUMENTS[c] for c in run["codes"] if c in VENDOR_DOCUMENTS) or ["documents that confirm your company's identity and bank details"]
-    return "More information needed", ("We need these from you to validate your information and continue with your application:\n"
-                                       + "\n".join(f"{i}. {d}" for i, d in enumerate(documents, 1)) + "\nPlease resubmit with them on the Onboard vendor page.")
-
-
-def vendor_messages(runs):
-    """One email thread per application (a corrected resubmission stays in its thread), newest first. SIMULATED: nothing is emailed."""
-    by_id = {r["run_id"]: r for r in runs}
-
-    def root(run):
-        while run["parent_id"] in by_id:
-            run = by_id[run["parent_id"]]
-        return run["run_id"]
-
-    threads = {}
-
-    def add(run, when, headline, body):
-        thread = threads.setdefault(root(run), {"id": root(run), "company": run["company"], "to": "", "messages": []})
-        thread["to"] = run["payload"].get("email") or thread["to"]
-        thread["messages"].append({"when": when, "headline": headline, "body": body, "run_id": run["run_id"]})
-
-    for r in runs:
-        add(r, r["ts"], VERDICT_HEADLINES[(r["status"], r["sub_status"])], r["decision"]["vendor_message"])
-        d, latest = r["decision_by"], r["decision"]["vendor_message"]
-        if d:
-            headline, latest = decision_mail(r, d["decision"])
-            add(r, d["ts"], headline, latest)
-        since = datetime.fromisoformat((d or r)["ts"])
-        if r["final"] == "Rejected" and (r["final_sub"] or "").startswith("Closed"):
-            add(r, (since + timedelta(days=FIX_DEADLINE_DAYS)).isoformat(timespec="seconds"), "Rejected",
-                f"Your application is rejected because we did not hear back within {FIX_DEADLINE_DAYS} days. If this was a mistake, submit a new application.")
-        elif r["waiting_on"] == "Vendor" and datetime.now() >= since + timedelta(days=REMINDER_DAYS):
-            add(r, (since + timedelta(days=REMINDER_DAYS)).isoformat(timespec="seconds"), "Reminder", "Reminder: your application is still waiting for you.\n" + latest)
-    for thread in threads.values():
-        thread["messages"].sort(key=lambda m: m["when"])
-        subject = f"Your vendor application ({thread['id']})"
-        for number, mail in enumerate(thread["messages"]):
-            mail["subject"] = subject if number == 0 else "Re: " + subject
-        thread.update(subject=subject, to=thread["to"] or "(no email given)", latest=thread["messages"][-1])
-    return sorted(threads.values(), key=lambda t: t["latest"]["when"], reverse=True)
-
-
 @app.get("/messages")
 def messages_page():
-    return render_template("messages.html", threads=vendor_messages(store.load_runs()), fix_deadline_days=FIX_DEADLINE_DAYS)
+    return render_template("messages.html", threads=mailer.threads(), transport=mailer.transport_name(), fix_deadline_days=FIX_DEADLINE_DAYS)
 
 
 @app.get("/export.csv")
@@ -400,6 +346,10 @@ def reset():
     PROGRESS.clear()
     flash("Demo data cleared: no submissions, no decisions. The vendors already on file were restored.", "ok")
     return redirect(url_for("submit_page"))
+
+
+if os.environ.get("MAIL_WORKER", "1") == "1":  # the tests switch it off and drive the sender by hand
+    mailer.start_background()
 
 
 if __name__ == "__main__":

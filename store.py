@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, 
     rule_version TEXT, seconds REAL, decision TEXT, payload TEXT, snapshot TEXT, parent_id TEXT);
 CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY, run_id TEXT, decision TEXT, note TEXT, reviewer TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS docs(run_id TEXT, slot TEXT, filename TEXT, data BLOB);
+CREATE TABLE IF NOT EXISTS claims(run_id TEXT PRIMARY KEY, reviewer TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS vendors(company_key TEXT, company_name TEXT, bank_account_number TEXT, mobile TEXT, email TEXT);
 """
 
@@ -62,6 +63,29 @@ def save_run(submission, decision, seconds, parent_id=None, files=None):
 def save_decision(run_id, decision, note, reviewer):
     with closing(connect()) as conn, conn:
         conn.execute("INSERT INTO decisions(run_id, decision, note, reviewer, ts) VALUES (?,?,?,?,?)", (run_id, decision, note, reviewer, now()))
+        conn.execute("DELETE FROM claims WHERE run_id=?", (run_id,))  # a decided run is nobody's any more
+
+
+def claims():
+    return {c["run_id"]: c for c in query("SELECT * FROM claims")}
+
+
+def claim(run_id, reviewer):
+    """Take a run so two reviewers do not work on it at once. Returns who already holds it, or None when you now do."""
+    with closing(connect()) as conn, conn:
+        row = conn.execute("SELECT reviewer FROM claims WHERE run_id=?", (run_id,)).fetchone()
+        if row and row["reviewer"].lower() != reviewer.lower():
+            return row["reviewer"]
+        conn.execute("INSERT OR REPLACE INTO claims VALUES (?,?,?)", (run_id, reviewer, now()))
+
+
+def release(run_id, reviewer):
+    """Give a run back. Only the holder can. Returns who holds it if that is someone else, else None."""
+    with closing(connect()) as conn, conn:
+        row = conn.execute("SELECT reviewer FROM claims WHERE run_id=?", (run_id,)).fetchone()
+        if row and row["reviewer"].lower() != reviewer.lower():
+            return row["reviewer"]
+        conn.execute("DELETE FROM claims WHERE run_id=?", (run_id,))
 
 
 def load_decisions():
@@ -75,7 +99,7 @@ def get_docs(run_id, with_data=True):
 def reset():
     """Demo only (a real audit trail is never deletable): clears every run and decision, and restores the vendors on file."""
     with closing(connect()) as conn, conn:
-        for table in ("runs", "decisions", "docs", "vendors"):
+        for table in ("runs", "decisions", "docs", "vendors", "claims"):
             conn.execute(f"DELETE FROM {table}")
 
 

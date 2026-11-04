@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import uuid
+from datetime import datetime
 from collections import Counter
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))  # the database and sample_inputs are found next to this file
@@ -13,7 +14,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 from markupsafe import Markup, escape  # noqa: E402
 
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, REASON_LABELS, RULE_VERSION  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, HIGH_PRIORITY_CODES, RED, REASON_LABELS, RULE_VERSION  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
 app = Flask(__name__)
@@ -21,9 +22,9 @@ app.secret_key = os.environ.get("SECRET_KEY", "demo-only-key")  # only signs fla
 
 STAGE_PAUSE = 0.35  # seconds per check, so the live view is watchable
 FIELDS = ["company_name", "entity_type", "country", "email", "mobile", "address", "tax_id", "pan", "bank_account_name", "bank_account_number", "bank_code", "website"]
-COUNTRY_NAMES = {"IN": "India", "US": "United States", "JP": "Japan", "Other": "Other (not supported yet)"}
+COUNTRY_NAMES = {"IN": "India", "US": "United States", "DE": "Germany", "Other": "Other (not supported yet)"}
 ENTITY, COUNTRY = ["company", "llp", "partnership", "sole_proprietor", "trust"], list(COUNTRY_NAMES)
-DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or Japanese corporate number notice)", "registration": "Registration document",
+DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT registration)", "registration": "Registration document",
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
 LEVELS = {1: "1 Vendor can fix", 2: "2 Needs a human", 3: "3 Red flag"}
 COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Superseded": "gray"}
@@ -57,6 +58,16 @@ def outcome(run):
 
 def system_verdict(run):
     return f"{run['status']}: {run['sub_status']}" if run["sub_status"] else run["status"]
+
+
+def priority(run):
+    """High = money or identity at risk (a red flag, a bank clash or change): the reviewer should look at these first."""
+    return "High" if RED in [f["level"] for f in run["findings"]] or HIGH_PRIORITY_CODES & set(run["codes"]) else "Normal"
+
+
+def age(run):
+    minutes = int((datetime.now() - datetime.fromisoformat(run["ts"])).total_seconds() // 60)
+    return f"{minutes} min" if minutes < 60 else f"{minutes // 60} h" if minutes < 2880 else f"{minutes // 1440} days"
 
 
 app.jinja_env.globals.update(badge=badge, reasons=reasons, vendor_entered=vendor_entered, outcome=outcome, system_verdict=system_verdict,
@@ -181,30 +192,78 @@ def download_doc(run_id, slot):
 
 # ---------------------------------------------------------------- reviewer desk
 
+SORTS = {"priority": "Most serious first", "oldest": "Oldest first", "newest": "Newest first"}
+SORT_KEYS = {"priority": lambda r: (r["priority"] != "High", r["seq"]), "oldest": lambda r: r["seq"], "newest": lambda r: -r["seq"]}  # seq = arrival order, so runs in the same second still sort
+
+
+def reviewable(run):
+    """A reviewer can decide runs the rules sent to them, and runs where they asked the vendor for more information."""
+    return bool(run) and run["final"] == "Pending" and (run["waiting_on"] == "Reviewer" or bool(run["decision_by"]))
+
+
+def back_args(source):
+    return {k: source[k] for k in ("sort", "priority", "q") if source.get(k)}
+
+
 @app.get("/review")
 def review_page():
+    held = store.claims()
     runs = store.load_runs()
-    queue = [r for r in runs if r["waiting_on"] == "Reviewer"]
-    picked = next((r for r in queue if r["run_id"] == request.args.get("run")), queue[0] if queue else None)
-    return render_template("review.html", queue=queue, picked=picked, waiting=[r for r in runs if r["waiting_on"] == "Vendor"],
-                           decisions=list(reversed(store.load_decisions())))
+    for seq, r in enumerate(runs):
+        r.update(seq=seq, priority=priority(r), age=age(r), claimed_by=held.get(r["run_id"], {}).get("reviewer"))
+    sort = request.args.get("sort") if request.args.get("sort") in SORTS else "priority"
+    level, text = request.args.get("priority", "All"), request.args.get("q", "").strip().lower()
+    everyone = [r for r in runs if r["waiting_on"] == "Reviewer"]
+    queue = sorted([r for r in everyone if level in ("All", r["priority"]) and text in f"{r['company']} {r['run_id']}".lower()],
+                   key=SORT_KEYS[sort])
+    info_waiting = [r for r in runs if reviewable(r) and r["waiting_on"] == "Vendor"]
+    picked = next((r for r in queue + info_waiting if r["run_id"] == request.args.get("run")), queue[0] if queue else None)
+    return render_template("review.html", queue=queue, everyone=everyone, n_high=sum(r["priority"] == "High" for r in everyone), picked=picked,
+                           info_waiting=info_waiting, waiting=[r for r in runs if r["waiting_on"] == "Vendor"], decisions=list(reversed(store.load_decisions())),
+                           sorts=SORTS, sort=sort, level=level, q=request.args.get("q", ""), args={"sort": sort, "priority": level, "q": request.args.get("q", "")})
+
+
+@app.post("/review/<run_id>/claim")
+def review_claim(run_id):
+    reviewer = request.form.get("reviewer", "").strip()
+    if not reviewer:
+        flash("Enter your name first, then take the submission.", "error")
+    elif holder := store.claim(run_id, reviewer):
+        flash(f"{holder} is already handling this submission.", "error")
+    else:
+        flash("You are handling this submission. Other reviewers can see it is taken.", "ok")
+    return redirect(url_for("review_page", run=run_id, **back_args(request.form)))
+
+
+@app.post("/review/<run_id>/release")
+def review_release(run_id):
+    reviewer = request.form.get("reviewer", "").strip()
+    if holder := store.release(run_id, reviewer):
+        flash(f"Only {holder} can give this one back.", "error")
+    else:
+        flash("Released: any reviewer can take it now.", "ok")
+    return redirect(url_for("review_page", run=run_id, **back_args(request.form)))
 
 
 @app.post("/review/<run_id>")
 def review_decision(run_id):
     reviewer, note, decision = request.form.get("reviewer", "").strip(), request.form.get("note", "").strip(), request.form.get("decision")
-    run = get_run(run_id)
-    if not run or run["waiting_on"] != "Reviewer":
+    run, back = get_run(run_id), back_args(request.form)
+    holder = store.claims().get(run_id)
+    if not reviewable(run):
         flash("That submission is no longer waiting for a reviewer.", "error")
     elif not reviewer or not note:
         flash("Please enter your name and a reason. Every decision needs both.", "error")
-        return redirect(url_for("review_page", run=run_id))
+        return redirect(url_for("review_page", run=run_id, **back))
+    elif holder and holder["reviewer"].lower() != reviewer.lower():
+        flash(f"{holder['reviewer']} is handling this submission, so you cannot decide it. Ask them to release it.", "error")
+        return redirect(url_for("review_page", run=run_id, **back))
     elif decision not in ("Approved", "Rejected", "Info requested"):
         flash("Unknown decision.", "error")
     else:
         store.save_decision(run_id, decision, note, reviewer)
         flash(f"{run['company']}: {decision} by {reviewer}.", "ok")
-    return redirect(url_for("review_page"))
+    return redirect(url_for("review_page", **back))  # opens the next one in the same order
 
 
 # ---------------------------------------------------------------- dashboard

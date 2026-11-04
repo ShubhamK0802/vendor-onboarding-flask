@@ -10,7 +10,7 @@ REQUIRED_BY_COUNTRY = {
     "US": [],
 }
 
-SUPPORTED_COUNTRIES = ["IN", "US", "JP"]
+SUPPORTED_COUNTRIES = ["IN", "US", "DE"]
 
 REQUIRED_DOCS = ["tax_document", "registration"]
 BANK_PROOF_DOCS = ["voided_cheque", "passbook"]
@@ -27,13 +27,13 @@ PAN_HOLDER_CODES = {
 SUFFIX_WORDS = {
     "private", "pvt", "limited", "ltd", "llp", "company", "co",
     "corp", "corporation", "inc", "llc", "group", "and",
-    "kabushiki", "kaisha", "kk", "yugen", "godo",  # Japanese company forms written in Latin letters
+    "gmbh", "ag", "ug", "kg", "ohg", "mbh",  # German company forms
 }
 
 NAME_REVIEW_THRESHOLD = 80
 STRICT_SUFFIX_MATCH = False
 
-LEGAL_FORMS = {"llp": "llp", "llc": "llc", "inc": "inc", "corp": "corp", "corporation": "corp"}
+LEGAL_FORMS = {"llp": "llp", "llc": "llc", "inc": "inc", "corp": "corp", "corporation": "corp", "gmbh": "gmbh", "ag": "ag", "ug": "ug", "kg": "kg", "ohg": "ohg"}
 
 REASON_LABELS = {
     "MISSING_FIELD": "A required field is empty",
@@ -64,9 +64,12 @@ REASON_LABELS = {
     "DUPLICATE_BANK_ACCOUNT": "Bank account already used by another vendor",
     "SHARED_CONTACT": "Contact details shared with another vendor",
     "EXISTING_VENDOR": "Company is already an onboarded vendor",
-    "BAD_CORPNUM_FORMAT": "Japanese corporate number is not 13 digits",
-    "BAD_CORPNUM_CHECKSUM": "Japanese corporate number fails its check digit (likely a typo)",
-    "BAD_ZENGIN_FORMAT": "Japanese bank code is not 7 digits (bank 4 + branch 3)",
+    "BAD_VAT_FORMAT": "German VAT ID is not DE plus 9 digits",
+    "BAD_VAT_CHECKSUM": "German VAT ID fails its check digit (likely a typo)",
+    "BAD_IBAN_FORMAT": "IBAN is not in the right format",
+    "BAD_IBAN_CHECKSUM": "IBAN fails its checksum (likely a typo)",
+    "BAD_BIC_FORMAT": "BIC / SWIFT code is not in the right format",
+    "BANK_COUNTRY_DIFFERS": "Bank is in a different country than the company",
     "NAME_NON_LATIN": "A name is not in Latin letters, so it cannot be compared",
     "BANK_DETAILS_CHANGED": "Bank account differs from the one on file",
 }
@@ -100,6 +103,7 @@ EVIDENCE_FIELDS = {
     "DUPLICATE_KEY_NEW_NAME": ["company_name", "tax_id", "pan"],
     "SHARED_CONTACT": ["mobile", "email"],
     "EXISTING_VENDOR": ["company_name", "pan", "tax_id"],
+    "BANK_COUNTRY_DIFFERS": ["bank_account_number", "bank_code"],
     "NAME_NON_LATIN": NAME_FIELDS,
     "BANK_DETAILS_CHANGED": ["bank_account_number", "bank_code"],
 }
@@ -114,3 +118,6 @@ VENDORS_ON_FILE = [{
     "mobile": "9000011111",
     "email": "orion@orion.example",
 }]
+
+# Reviewer desk: these findings put money at risk, so such runs are shown first (a red-flag finding does too).
+HIGH_PRIORITY_CODES = {"DUPLICATE_BANK_ACCOUNT", "BANK_DETAILS_CHANGED", "DUPLICATE_KEY_NEW_NAME", "BANK_COUNTRY_DIFFERS"}

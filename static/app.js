@@ -58,3 +58,13 @@ if ($('#stages')) {
 
   document.querySelectorAll('form.tab').forEach((form) => form.addEventListener('submit', (e) => { e.preventDefault(); run(form); }));
 }
+
+// Reviewer desk: remember the reviewer's name, and put it into whichever button they press (claim, release or decide).
+const nameBox = $('#reviewer-name');
+if (nameBox) {
+  try { nameBox.value = localStorage.getItem('reviewer') || ''; } catch (e) { /* storage blocked: fine */ }
+  document.querySelectorAll('form.needs-name').forEach((form) => form.addEventListener('submit', () => {
+    form.querySelector('[name=reviewer]').value = nameBox.value.trim();
+    try { localStorage.setItem('reviewer', nameBox.value.trim()); } catch (e) { /* ignore */ }
+  }));
+}

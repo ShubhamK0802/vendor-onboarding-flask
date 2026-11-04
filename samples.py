@@ -2,7 +2,7 @@ import copy
 import json
 import os
 
-from checks import corp_number_check_digit, gstin_check_char
+from checks import german_vat_check_digit, gstin_check_char
 from config import VENDORS_ON_FILE
 
 with open("sample_inputs/01_clean_india.json") as handle:
@@ -51,11 +51,15 @@ def fresh(d, name, pan, account, mobile=None, email=None, us=False):
     return d
 
 
-def japan(d, name, base12, account):
-    """A Japanese vendor: the 13-digit corporate number is a check digit followed by the 12-digit base number."""
-    d.update(company_name=name, bank_account_name=name, country="JP", entity_type="company", tax_id=f"{corp_number_check_digit(base12)}{base12}",
-             bank_account_number=account, bank_code="0005123", pan=None, mobile="090" + account.zfill(8), email=f"ap@{name.split()[0].lower()}.example",
-             address="1-2-3 Chiyoda, Chiyoda-ku, Tokyo 100-0001")
+def iban_for(bban):
+    """A German IBAN is DE + 2 check digits + the 18-digit bank code and account number."""
+    return f"DE{98 - int(bban + '131400') % 97:02d}{bban}"
+
+
+def germany(d, name, base8, bban, bic, holder=None, iban=None):
+    d.update(company_name=name, bank_account_name=holder or name, country="DE", entity_type="company", pan=None,
+             tax_id=f"DE{base8}{german_vat_check_digit(base8)}", bank_account_number=iban or iban_for(bban), bank_code=bic,
+             mobile="+4915112345" + base8[:3], email=f"ap@{name.split()[0].lower().replace(chr(252), 'ue')}.example", address="Hafenstrasse 12, 20457 Hamburg")
     return d
 
 
@@ -77,10 +81,11 @@ CASES = [
     ("12_identity_fields_contradict", INDIA, lambda d: (fresh(d, "Cobalt Tools Private Limited", "COBCT9012S", "77000123456707"), d.update(pan="ZZZZZ9999Z")), SEED, "Rejected", None),
     ("13_company_id_new_name", INDIA, lambda d: d.update(company_name="Apex Holdings", bank_account_name="Apex Holdings"), SEED + [APEX], "Pending", "In review"),
     ("14_us_vendor_indian_tax_id", US, lambda d: (fresh(d, "Redwood Supply LLC", "29ABCCA1234D1Z6", "4400555111", mobile="3105550188", us=True)), SEED, "Pending", "In review"),
-    ("16_clean_japan", INDIA, lambda d: japan(d, "Sakura Components Kabushiki Kaisha", "700110005901", "1234567"), SEED, "Approved", None),
-    ("17_japan_bad_corporate_number", INDIA, lambda d: (japan(d, "Hoshino Machinery Kabushiki Kaisha", "700110005902", "2345678"), d.update(tax_id=d["tax_id"][:-1] + str((int(d["tax_id"][-1]) + 1) % 10))), SEED, "Pending", "Resubmission required"),
-    ("18_japan_non_latin_names", INDIA, lambda d: (japan(d, "Midori Foods Kabushiki Kaisha", "700110005903", "3456789"), d.update(company_name="株式会社ミドリフーズ", bank_account_name="ｶ)ﾐﾄﾞﾘﾌｰｽﾞ")), SEED, "Pending", "In review"),
     ("15_shared_contact", INDIA, lambda d: fresh(d, "Quill Stationers Private Limited", "QUICS0123T", "78000123456708", mobile="9000011111"), SEED, "Pending", "In review"),
+    ("16_clean_germany", INDIA, lambda d: germany(d, "Nordlicht Logistik GmbH", "13669597", "370400440532013000", "COBADEFFXXX"), SEED, "Approved", None),
+    ("17_germany_bad_vat_checksum", INDIA, lambda d: (germany(d, "Rheinblick Maschinen GmbH", "12345678", "100000000123456789", "MARKDEF1100"), d.update(tax_id=d["tax_id"][:-1] + str((int(d["tax_id"][-1]) + 1) % 10))), SEED, "Pending", "Resubmission required"),
+    ("18_germany_umlaut_names", INDIA, lambda d: germany(d, "Müller Söhne GmbH", "27123456", "120300000000202051", "BYLADEM1001", holder="Mueller Soehne GmbH"), SEED, "Approved", None),
+    ("19_germany_foreign_bank", INDIA, lambda d: germany(d, "Kraftwerk Tools GmbH", "31987654", "", "WESTGB2LXXX", iban="GB82WEST12345698765432"), SEED, "Pending", "In review"),
 ]
 
 

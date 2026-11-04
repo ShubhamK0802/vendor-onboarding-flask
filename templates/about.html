@@ -3,19 +3,20 @@
 <h1>About</h1>
 <section class="card prose">
   <h2>Countries</h2>
-  <p><b>Three countries today: India, the United States and Japan.</b> Any other country is never approved automatically: it goes to a reviewer.</p>
+  <p><b>Three countries today: India, the United States and Germany.</b> Any other country is never approved automatically: it goes to a reviewer.</p>
   <ul>
     <li><b>India:</b> GSTIN (with check character) and PAN, IFSC.</li>
     <li><b>United States:</b> EIN, 9-digit routing number (with checksum).</li>
-    <li><b>Japan:</b> 13-digit corporate number (with check digit), 7-digit bank code (bank 4 + branch 3). Names must be in Latin letters: Japanese bank account holder names are usually written in katakana, which cannot be compared by spelling with the legal name, so those go to a reviewer.</li>
+    <li><b>Germany:</b> VAT ID (DE plus 9 digits, with check digit), IBAN (with mod-97 checksum and the 22-character length) and BIC. A German company banking abroad is allowed but goes to a reviewer. Umlauts match the way banks spell them (Müller = Mueller).</li>
   </ul>
-  <p>More countries are a rule-table change, not a rewrite: each identifier format is one row in the <code>FORMATS</code> table in <code>checks.py</code>. To show that this is true, Germany and the UK could be added in about an hour using one shared IBAN rule.
-     We deliberately did not try all ten of the biggest countries: every country that is added without being tested properly is a place where the process could wrongly approve someone.</p>
+  <p>More countries are a rule-table change, not a rewrite: each identifier format is one row in the <code>FORMATS</code> table in <code>checks.py</code>, and the IBAN rule is shared by every IBAN country, so the UK, France or Italy would mostly be new VAT-number rows.
+     We deliberately did not try all ten of the biggest countries: every country that is added without being tested properly is a place where the process could wrongly approve someone.
+     Names that are not in Latin letters (for example Japanese or Chinese) are never compared by spelling: they go to a reviewer.</p>
 
   <h2>Who uses this</h2>
   <ul>
     <li><b>Vendors</b> fill in the form and upload documents. They see only the status and what they need to fix.</li>
-    <li><b>Reviewers</b> use the Reviewer desk: a queue of vendors needing a human, the evidence and documents, and Approve / Reject / Request more info with a required reason.</li>
+    <li><b>Reviewers</b> use the Reviewer desk: a queue that can be sorted by seriousness or age, filtered and searched, with the evidence and documents, a way to take a submission so nobody else works on it, and Approve / Reject / Request more info with a required reason. After each decision the next submission opens.</li>
   </ul>
 
   <h2>How a submission is decided</h2>
@@ -49,7 +50,7 @@
   <ul>
     <li>No live checks against tax registries, sanctions lists or bank-account ownership.</li>
     <li>Documents are stored for the reviewer to open, but their contents are not read. A forged document of the right type would pass.</li>
-    <li>India, US and Japan only, one bank account per submission. No expiry tracking and no automatic reminders.</li>
+    <li>India, US and Germany only, one bank account per submission. No expiry tracking and no automatic reminders.</li>
     <li>Data lives in a SQLite file; on free hosting it can reset on restart.</li>
   </ul>
 </section>

@@ -36,12 +36,20 @@ for name, base, edit, history, status, sub_status in CASES:
     result = run_pipeline(data, history)
     check((result["status"], result["sub_status"]) == (status, sub_status), name, f"-> {result['status']} {result['sub_status']}")
 
-from checks import check_identity, check_name_match, corp_number_check_digit  # noqa: E402
-check(corp_number_check_digit("700110005901") == 8, "Japan corporate number check digit matches the National Tax Agency's published example (8)")
-jp_gstin = check_identity({"country": "JP", "tax_id": INDIA["tax_id"]})
-us_corp = check_identity({"country": "US", "tax_id": "8700110005901"})
-check([f["code"] for f in jp_gstin["findings"] + us_corp["findings"]] == ["ID_COUNTRY_MISMATCH"] * 2, "a tax ID that belongs to another country is a red flag (Japan with a GSTIN, US with a corporate number)")
-check(not check_name_match({"company_name": "Müller Söhne GmbH", "bank_account_name": "Müller Söhne GmbH"})["findings"], "accented Latin names are compared normally, only non-Latin scripts go to review")
+from checks import check_formats, check_identity, check_name_match, german_vat_check_digit  # noqa: E402
+check(german_vat_check_digit("13669597") == 6 and german_vat_check_digit("13669597") != 8, "German VAT check digit matches the published valid example DE136695976")
+check(german_vat_check_digit("12345678") == 8, "German VAT check digit: DE123456788 is valid")
+codes = lambda sub: [f["code"] for f in check_formats(sub)["findings"]]
+de = {"country": "DE", "tax_id": "DE136695976", "bank_account_number": "DE89 3704 0044 0532 0130 00", "bank_code": "COBADEFFXXX"}
+check(codes(de) == [] and codes(dict(de, tax_id="DE136695978")) == ["BAD_VAT_CHECKSUM"], "German VAT ID: valid passes, one wrong digit fails the checksum")
+check(codes(dict(de, bank_account_number="DE89370400440532013001")) == ["BAD_IBAN_CHECKSUM"] and codes(dict(de, bank_account_number="DE8937040044053201300")) == ["BAD_IBAN_FORMAT"], "IBAN: wrong checksum and wrong German length are both caught")
+check(codes(dict(de, bank_code="COBA")) == ["BAD_BIC_FORMAT"], "BIC with the wrong length is caught")
+de_with_gstin = check_identity({"country": "DE", "tax_id": INDIA["tax_id"]})
+us_with_vat = check_identity({"country": "US", "tax_id": "DE136695976"})
+check([f["code"] for f in de_with_gstin["findings"] + us_with_vat["findings"]] == ["ID_COUNTRY_MISMATCH"] * 2, "a tax ID that belongs to another country is a red flag (Germany with a GSTIN, US with a German VAT ID)")
+check([f["code"] for f in check_identity(dict(de, bank_account_number="GB82WEST12345698765432"))["findings"]] == ["BANK_COUNTRY_DIFFERS"], "a German company with a foreign IBAN goes to review, not auto-approval")
+check(not check_name_match({"company_name": "M\u00fcller S\u00f6hne GmbH", "bank_account_name": "Mueller Soehne GmbH"})["findings"], "umlauts match their bank-statement spelling (ue, oe)")
+check([f["code"] for f in check_name_match({"company_name": "Sakura K.K. \u682a\u5f0f\u4f1a\u793e", "bank_account_name": "Sakura KK"})["findings"]] == ["NAME_NON_LATIN"], "names in non-Latin scripts go to review instead of being compared by spelling")
 
 with open("sample_inputs/11_malformed.json") as handle:
     data, error = parse_submission(handle.read())
@@ -118,6 +126,39 @@ check(client.get("/export.csv").data.startswith(b"run,when,company"), "web: CSV 
 check(b"Form Vendor LLC" in client.get("/dashboard").data and b"****" not in client.get("/export.csv").data, "web: dashboard lists the runs")
 client.post("/reset")
 check(b"No runs yet" in client.get("/dashboard").data, "web: reset empties the dashboard again")
+
+# ---- reviewer desk: order, filters, taking a submission, next-up, info-requested runs ----
+contact = run_web(mode="sample", sample="15_shared_contact.json")["run_id"]  # normal priority, submitted first
+clash = run_web(mode="sample", sample="07_shared_bank_account.json")["run_id"]  # bank account clash: high priority, submitted second
+near = run_web(mode="sample", sample="06_near_miss_name.json")["run_id"]  # normal priority, newest
+
+
+def rows(html):
+    text = html.decode()
+    return sorted((text.find(f">{rid}</a>"), rid) for rid in (contact, clash, near) if f">{rid}</a>" in text)
+
+
+order = lambda url: [rid for _, rid in rows(client.get(url).data)]
+check(order("/review") == [clash, contact, near], "reviewer desk: default order puts the high-priority run first, then oldest")
+check(order("/review?sort=oldest") == [contact, clash, near] and order("/review?sort=newest") == [near, clash, contact], "reviewer desk: oldest-first and newest-first orders")
+check(order("/review?priority=High") == [clash] and order("/review?q=quill") == [contact], "reviewer desk: filter by priority and search by company")
+check(b"Being handled by" not in client.get(f"/review?run={contact}").data, "reviewer desk: nothing is taken at first")
+
+client.post(f"/review/{contact}/claim", data={"reviewer": "Asha"})
+check(b"Being handled by <b>Asha</b>" in client.get(f"/review?run={contact}").data, "reviewer desk: a reviewer can take a submission and everyone sees it")
+check(b"already handling" in client.post(f"/review/{contact}/claim", data={"reviewer": "Priya"}, follow_redirects=True).data, "reviewer desk: a second reviewer cannot take it")
+check(b"cannot decide it" in client.post(f"/review/{contact}", data={"reviewer": "Priya", "decision": "Approved", "note": "looks fine"}, follow_redirects=True).data, "reviewer desk: nobody else can decide a submission someone has taken")
+check(b"Only Asha can give" in client.post(f"/review/{contact}/release", data={"reviewer": "Priya"}, follow_redirects=True).data, "reviewer desk: only the holder can give it back")
+client.post(f"/review/{contact}/release", data={"reviewer": "asha"})
+check(b"Being handled by" not in client.get(f"/review?run={contact}").data, "reviewer desk: giving it back frees it (names are not case-sensitive)")
+
+page = client.post(f"/review/{clash}", data={"reviewer": "Asha", "decision": "Info requested", "note": "Send a bank letter", "sort": "priority"}, follow_redirects=True).data
+check(f">{contact}</a>" in page.decode() and f"run={clash}" in page.decode(), "reviewer desk: after a decision the next submission opens, and an info-requested run stays reachable")
+check(store.load_runs() and next(r for r in store.load_runs() if r["run_id"] == clash)["waiting_on"] == "Vendor", "reviewer desk: info requested moves the run to waiting on the vendor")
+done_page = client.post(f"/review/{clash}", data={"reviewer": "Priya", "decision": "Rejected", "note": "Vendor never replied"}, follow_redirects=True).data
+check(b"Rejected by Priya" in done_page and next(r for r in store.load_runs() if r["run_id"] == clash)["final"] == "Rejected", "reviewer desk: a run waiting for the vendor's reply can still be closed by a reviewer")
+client.post("/reset")
+
 
 print("ALL PASSED" if not failed else f"FAILED: {failed}")
 sys.exit(1 if failed else 0)

@@ -1,3 +1,5 @@
+import unicodedata
+
 from config import SUFFIX_WORDS
 
 EMPTY_WORDS = {"", "n/a", "none", "null", "-"}
@@ -21,6 +23,9 @@ def normalize_name(value):
     if text is None:
         return None
     text = text.lower().replace("&", " and ")
+    for umlaut, spelled in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):  # how German names are written on bank statements
+        text = text.replace(umlaut, spelled)
+    text = "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))  # other accents: e-acute -> e
     text = "".join(ch if ch.isalnum() else " " for ch in text)
     return " ".join(text.split())
 

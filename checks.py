@@ -51,8 +51,9 @@ EIN_PATTERN = re.compile(r"[0-9]{9}")
 GSTIN_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 ROUTING_WEIGHTS = [3, 7, 1, 3, 7, 1, 3, 7, 1]
 EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
-CORPNUM_PATTERN = re.compile(r"[0-9]{13}")  # Japan: 1 check digit + 12-digit base number
-ZENGIN_PATTERN = re.compile(r"[0-9]{7}")  # Japan: 4-digit bank code + 3-digit branch code
+VAT_DE_PATTERN = re.compile(r"DE[0-9]{9}")
+IBAN_PATTERN = re.compile(r"[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}")  # one shape for every IBAN country
+BIC_PATTERN = re.compile(r"[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?")
 
 
 def gstin_check_char(first14):
@@ -73,14 +74,26 @@ def routing_checksum(value):
         return "BAD_ROUTING_CHECKSUM", "Routing number check failed; please re-check for a typo"
 
 
-def corp_number_check_digit(base12):
-    """Japan's National Tax Agency method: 9 - (weighted digit sum mod 9); weights 1,2,1,2... counted from the right."""
-    return 9 - sum(int(d) * (1 if i % 2 == 0 else 2) for i, d in enumerate(reversed(base12))) % 9
+def german_vat_check_digit(base8):
+    """ISO 7064 MOD 11,10 over the 8 digits after "DE"; the 9th digit is the check digit."""
+    product = 10
+    for digit in base8:
+        total = (int(digit) + product) % 10 or 10
+        product = (2 * total) % 11
+    return (11 - product) % 10
 
 
-def corp_number_checksum(value):
-    if int(value[0]) != corp_number_check_digit(value[1:]):
-        return "BAD_CORPNUM_CHECKSUM", "The corporate number's check digit does not match; please re-check for a typo"
+def german_vat_checksum(value):
+    if int(value[-1]) != german_vat_check_digit(value[2:-1]):
+        return "BAD_VAT_CHECKSUM", "The VAT ID's check digit does not match; please re-check for a typo"
+
+
+def iban_checksum(value):
+    """ISO 13616 mod-97, shared by every IBAN country; a German IBAN is also exactly 22 characters."""
+    if value.startswith("DE") and len(value) != 22:
+        return "BAD_IBAN_FORMAT", f"A German IBAN has 22 characters; this one has {len(value)}"
+    if int("".join(str(int(ch, 36)) for ch in value[4:] + value[:4])) % 97 != 1:
+        return "BAD_IBAN_CHECKSUM", "The IBAN's checksum does not match; please re-check for a typo"
 
 
 Rule = namedtuple("Rule", "country field pattern code message extra", defaults=(None,))
@@ -93,8 +106,9 @@ FORMATS = [
     Rule("IN", "bank_code", re.compile(r"[A-Z]{4}0[A-Z0-9]{6}"), "BAD_IFSC_FORMAT",
          "IFSC must be 11 characters: 4 letters, the digit 0, then 6 letters or digits (example: HDFC0001234)"),
     Rule("US", "bank_code", EIN_PATTERN, "BAD_ROUTING_FORMAT", "Routing number must be 9 digits", routing_checksum),
-    Rule("JP", "tax_id", CORPNUM_PATTERN, "BAD_CORPNUM_FORMAT", "Japanese corporate number (hojin bango) must be 13 digits", corp_number_checksum),
-    Rule("JP", "bank_code", ZENGIN_PATTERN, "BAD_ZENGIN_FORMAT", "Japanese bank code must be 7 digits: 4-digit bank code then 3-digit branch code"),
+    Rule("DE", "tax_id", VAT_DE_PATTERN, "BAD_VAT_FORMAT", "German VAT ID (USt-IdNr) must be DE followed by 9 digits (example: DE123456788)", german_vat_checksum),
+    Rule("DE", "bank_account_number", IBAN_PATTERN, "BAD_IBAN_FORMAT", "The account must be an IBAN: 2 letters, 2 check digits, then the account number", iban_checksum),
+    Rule("DE", "bank_code", BIC_PATTERN, "BAD_BIC_FORMAT", "BIC / SWIFT code must be 8 or 11 characters (example: COBADEFFXXX)"),
 ]
 ZERO_DROPPED = ("BAD_EIN_FORMAT", "BAD_ROUTING_FORMAT")  # Excel often drops a leading zero
 
@@ -140,7 +154,7 @@ def check_documents(submission):
     return make_result("documents", findings)
 
 
-TAX_ID_KINDS = {"IN": (GSTIN_PATTERN, "an Indian GSTIN"), "US": (EIN_PATTERN, "a US EIN"), "JP": (CORPNUM_PATTERN, "a Japanese corporate number")}
+TAX_ID_KINDS = {"IN": (GSTIN_PATTERN, "an Indian GSTIN"), "US": (EIN_PATTERN, "a US EIN"), "DE": (VAT_DE_PATTERN, "a German VAT ID")}
 
 
 # ---- 5. identity cross-checks -------------------------------------------------------------------
@@ -158,6 +172,9 @@ def check_identity(submission):
         if country in SUPPORTED_COUNTRIES and tax_id and other != country and pattern.fullmatch(tax_id):
             findings.append(make_finding("ID_COUNTRY_MISMATCH", RED, f"The tax ID looks like {kind}, but the country is {country}"))
             break
+    iban = normalize_id(submission.get("bank_account_number"))
+    if country == "DE" and iban and IBAN_PATTERN.fullmatch(iban) and iban[:2] != "DE":  # bank country is advisory: a company can bank abroad, but a human confirms
+        findings.append(make_finding("BANK_COUNTRY_DIFFERS", REVIEW, f"The IBAN is from {iban[:2]} but the company is registered in Germany; a reviewer will confirm"))
     return make_result("identity_checks", findings)
 
 
@@ -203,7 +220,7 @@ def check_name_match(submission):
 
 def company_key(submission):
     country = normalize_id(submission.get("country"))
-    return normalize_id(submission.get("pan")) if country == "IN" else normalize_id(submission.get("tax_id")) if country in ("US", "JP") else None
+    return normalize_id(submission.get("pan")) if country == "IN" else normalize_id(submission.get("tax_id")) if country in ("US", "DE") else None
 
 
 def check_duplicates(submission, existing_vendors):

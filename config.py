@@ -125,3 +125,7 @@ HIGH_PRIORITY_CODES = {"DUPLICATE_BANK_ACCOUNT", "BANK_DETAILS_CHANGED", "DUPLIC
 # The two reasons a run can be Pending (status names shown everywhere).
 NEEDS_REVIEW = "Needs review"
 VENDOR_TO_FIX = "Vendor to fix"
+
+# Findings that reject a submission on their own, with the reason the VENDOR is told (never a fraud accusation).
+# A lookalike name is a known fraud tactic, and an honest typo can simply be submitted again as a new application.
+REJECT_ON_ITS_OWN = {"NAME_NEAR_MISS": "the bank account holder name is not exactly the same as your company name"}

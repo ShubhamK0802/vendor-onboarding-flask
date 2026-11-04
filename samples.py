@@ -73,7 +73,7 @@ CASES = [
     ("03_short_tax_id", INDIA, lambda d: (fresh(d, "Kestrel Fabrics Private Limited", "KESCF2345K", "71000123456701"), short_tax_id(d)), SEED, "Pending", "Vendor to fix"),
     ("04_wrong_document_slot", INDIA, lambda d: (fresh(d, "Delta Pumps Private Limited", "DELCP3456L", "72000123456702"), d["documents"]["registration"].update(declared_type="tax_document")), SEED, "Pending", "Vendor to fix"),
     ("05_suffix_spelling", INDIA, lambda d: (fresh(d, "Sundara Textiles Private Limited", "SUNCT4567M", "73000123456703"), d.update(bank_account_name="Sundara Textiles Pvt. Ltd.")), SEED, "Approved", None),
-    ("06_near_miss_name", INDIA, lambda d: (fresh(d, "Lumina Global Private Limited", "LUMCG5678N", "74000123456704"), d.update(bank_account_name="Lumina Globe Private Limited")), SEED, "Pending", "Needs review"),
+    ("06_near_miss_name", INDIA, lambda d: (fresh(d, "Lumina Global Private Limited", "LUMCG5678N", "74000123456704"), d.update(bank_account_name="Lumina Globe Private Limited")), SEED, "Rejected", None),
     ("07_shared_bank_account", INDIA, lambda d: fresh(d, "Harbor Freight Private Limited", "HARCF6789P", "60200345678912"), SEED, "Pending", "Needs review"),
     ("08_unsupported_country", INDIA, lambda d: (fresh(d, "Atlas Metals Private Limited", "ATLCM7890Q", "75000123456705"), d.update(country="BR")), SEED, "Pending", "Needs review"),
     ("09_missing_doc_and_holder_mismatch", INDIA, lambda d: (fresh(d, "Birch Papers Private Limited", "BIRCP8901R", "76000123456706"), d["documents"].update(voided_cheque=None), d.update(bank_account_name="Zenith Traders")), SEED, "Rejected", None),

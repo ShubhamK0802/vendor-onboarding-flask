@@ -4,12 +4,14 @@ from checks import (
     check_completeness, check_country, check_formats, check_documents,
     check_identity, check_name_match, check_duplicates,
 )
-from config import FIX, NEEDS_REVIEW, RED, REVIEW, RULE_VERSION, VENDOR_TO_FIX
+from config import FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION, VENDOR_TO_FIX
 
 
-def build_vendor_message(status, sub_status, fixes):
+def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
     if status == "Approved":
         return "Your vendor application is approved."
+    if status == "Rejected" and reject_reasons:
+        return "We are unable to approve this application because " + " and ".join(reject_reasons) + ". If this was a mistake, please submit a new application or contact our support team."
     if status == "Rejected":
         return "We are unable to approve this application. Please contact our support team."
     if sub_status == NEEDS_REVIEW:
@@ -27,11 +29,12 @@ def decide(stage_results):
         findings += result["findings"]
     levels = [finding["level"] for finding in findings]
     red_flags = levels.count(RED)
+    reject_reasons = [REJECT_ON_ITS_OWN[f["code"]] for f in findings if f["code"] in REJECT_ON_ITS_OWN]
     missing_doc = any(f["code"] in ("MISSING_DOCUMENT", "MISSING_BANK_PROOF") for f in findings)
 
     if not findings:
         status, sub_status = "Approved", None
-    elif red_flags >= 2 or (red_flags >= 1 and missing_doc):
+    elif reject_reasons or red_flags >= 2 or (red_flags >= 1 and missing_doc):
         status, sub_status = "Rejected", None
     elif red_flags == 1 or REVIEW in levels:
         status, sub_status = "Pending", NEEDS_REVIEW
@@ -44,7 +47,7 @@ def decide(stage_results):
         "status": status,
         "sub_status": sub_status,
         "findings": findings,
-        "vendor_message": build_vendor_message(status, sub_status, fixes),
+        "vendor_message": build_vendor_message(status, sub_status, fixes, reject_reasons),
         "reviewer_notes": reviewer_notes,
     }
 

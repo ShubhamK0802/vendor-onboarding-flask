@@ -23,10 +23,10 @@
   <p>Seven checks run in order: completeness, country routing, format checks, documents, identity checks, name match, duplicate check. Each finding has a level:</p>
   <ul>
     <li><b>Level 1:</b> the vendor can fix it (missing document, typo in a format).</li>
-    <li><b>Level 2:</b> needs human judgment (similar names, shared bank account or contact, a vendor that is already onboarded).</li>
+    <li><b>Level 2:</b> needs human judgment (shared bank account or contact, a vendor that is already onboarded, a changed bank account).</li>
     <li><b>Level 3:</b> identity red flag (GSTIN and PAN disagree, tax ID from the wrong country).</li>
   </ul>
-  <p><b>Approved</b> only when nothing at all is found. <b>Pending: Vendor to fix</b> when there are only Level 1 findings. <b>Pending: Needs review</b> for any Level 2, or exactly one Level 3. <b>Rejected:</b> two or more Level 3, or one Level 3 plus a missing document.</p>
+  <p><b>Approved</b> only when nothing at all is found. <b>Pending: Vendor to fix</b> when there are only Level 1 findings. <b>Pending: Needs review</b> for any Level 2, or exactly one Level 3. <b>Rejected:</b> two or more Level 3, one Level 3 plus a missing document, or a bank account holder name that is similar but not identical to the company name (for example Globe vs Global). A lookalike name is a known fraud tactic and a reviewer cannot tell it from a typo, so it is rejected; the vendor is told the names must match, and an honest vendor can submit a new application.</p>
   <p>Anything the system cannot positively verify is never approved automatically: it goes back to the vendor, to a reviewer, or is rejected.</p>
 
   <h2>What happens after the verdict</h2>

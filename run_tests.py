@@ -127,10 +127,14 @@ check(b"Form Vendor LLC" in client.get("/dashboard").data and b"****" not in cli
 client.post("/reset")
 check(b"No runs yet" in client.get("/dashboard").data, "web: reset empties the dashboard again")
 
+# a near-miss name is rejected outright, and the vendor is told why in safe words
+lookalike = run_web(mode="sample", sample="06_near_miss_name.json")["run_id"]
+check(next(r for r in store.load_runs() if r["run_id"] == lookalike)["final"] == "Rejected" and b"not exactly the same as your company name" in client.get(f"/run/{lookalike}").data, "web: a near-miss name is rejected and the vendor is told the reason")
+
 # ---- reviewer desk: order, filters, taking a submission, next-up, info-requested runs ----
 contact = run_web(mode="sample", sample="15_shared_contact.json")["run_id"]  # normal priority, submitted first
 clash = run_web(mode="sample", sample="07_shared_bank_account.json")["run_id"]  # bank account clash: high priority, submitted second
-near = run_web(mode="sample", sample="06_near_miss_name.json")["run_id"]  # normal priority, newest
+near = run_web(mode="sample", sample="08_unsupported_country.json")["run_id"]  # normal priority, newest
 
 
 def rows(html):

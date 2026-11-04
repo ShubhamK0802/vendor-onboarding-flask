@@ -208,8 +208,8 @@ def check_name_match(submission):
         return make_result("name_match", [], note=note)
     score = fuzz.token_sort_ratio(company, holder)
     if score >= NAME_REVIEW_THRESHOLD:
-        return make_result("name_match", [make_finding("NAME_NEAR_MISS", REVIEW,
-            f"Company name and bank account holder name are similar but not identical ({score:.0f}% similar); a reviewer will confirm")])
+        return make_result("name_match", [make_finding("NAME_NEAR_MISS", RED,
+            f"Company name and bank account holder name are similar but not identical ({score:.0f}% similar); a lookalike name is a known fraud tactic, so it is rejected")])
     if (clean_value(submission.get("entity_type")) or "").lower().replace(" ", "_") == "sole_proprietor":
         return make_result("name_match", [make_finding("SOLE_PROP_NAME_REVIEW", REVIEW,
             "Account holder name differs from the business name; for a sole proprietor this can be the owner's own name, so a reviewer will confirm")])

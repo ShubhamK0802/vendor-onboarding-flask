@@ -138,6 +138,7 @@ VENDORS_ON_FILE = [{
     "mobile": "9000011111",
     "email": "orion@orion.example",
     "address": "5 Residency Road, Pune, Maharashtra 411001",
+    "country": "IN",
 }]
 
 # ---- When is a run Rejected? (the status definitions, in code)

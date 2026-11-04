@@ -2,6 +2,7 @@
 import copy
 import io
 import os
+import re
 import sys
 import tempfile
 import time
@@ -59,7 +60,7 @@ check(data is None and error, "99_error_malformed_json", f"-> {error}")
 check(store.load_runs() == [] and len(store.known_vendors([])) == 1, "history starts empty; only the vendors on file are known")
 
 first = submit(INDIA)
-check(len(first) == 8 and first != run(submit(INDIA))["run_id"] and not first.startswith("S-") and run(first)["vendor_id"].startswith("V-") and len(run(first)["vendor_id"]) == 8, "submission IDs are random 8-character codes, not a guessable sequence, and vendors get a V- ID")
+check(len(first) == 8 and first != run(submit(INDIA))["run_id"] and not first.startswith("S-") and re.fullmatch(r"VIN[0-9A-F]{6}", run(first)["vendor_id"]) and "-" not in run(first)["vendor_id"], "submission IDs are random 8-character codes, not a guessable sequence, and vendors get a V- ID")
 check(run(first)["final"] == "Approved", "clean vendor is approved")
 again = submit(INDIA)
 check(run(again)["final"] == "Rejected" and "DUPLICATE_APPLICATION" in run(again)["codes"] and "exactly these details" in run(again)["decision"]["vendor_message"],
@@ -79,7 +80,7 @@ check(run(shared)["vendor_id"] == "", "vendor ID: a company that has not been ap
 store.save_decision(shared, "Info requested", "Please send a bank letter", "Asha")
 check(run(shared)["waiting_on"] == "Vendor", "info requested: leaves the reviewer queue but stays visible, waiting on the vendor")
 store.save_decision(shared, "Approved", "Bank letter received", "Asha")
-check(run(shared)["vendor_id"].startswith("V-"), "vendor ID: a reviewer approving a company issues one")
+check(re.fullmatch(r"VIN[0-9A-F]{6}", run(shared)["vendor_id"]), "vendor ID: a reviewer approving a company issues one (V + country + letters/digits)")
 check(run(shared)["final"] == "Approved" and run(shared)["decided_by"] == "Asha", "reviewer approval changes the final status and records who")
 check(any(v["company_name"] == "Orion Lookalike Traders" for v in store.known_vendors(store.load_runs())), "reviewer-approved vendor joins the duplicate check list")
 
@@ -97,6 +98,10 @@ outcome = lambda d, prev=(): (lambda r: (r["status"], r["sub_status"]))(run_pipe
 check(outcome(quartz) == ("Approved", None), "status definitions: a vendor with nothing wrong is approved")
 never = submit(dict(quartz, tax_id="123456789"))
 check(run(never)["vendor_id"] == "", "vendor ID: a sent-back or rejected company never gets a vendor ID")
+
+# vendor IDs carry the company's country and nothing but letters and digits
+from store import new_vendor_id  # noqa: E402
+check(all(re.fullmatch(rf"V{cc}[0-9A-F]{{6}}", new_vendor_id(cc)) for cc in ("IN", "US", "DE")) and re.fullmatch(r"VXX[0-9A-F]{6}", new_vendor_id("BR")), "vendor ID: V + IN / US / DE (XX if another country) + 6 letters or digits, no special characters")
 
 # ---- the vendor message is short and to the point
 two = run_pipeline(dict(quartz, bank_account_name="Zenith Traders", documents=dict(quartz["documents"], voided_cheque=None)), [])["vendor_message"]

@@ -18,4 +18,4 @@ submits again; samples no longer collide with each other (only 10 and 13 reuse A
 
 **Verification:** `registry.json` (simulated tax registry) and `sanctions.json` (fictional watchlist) are demo data written by `python samples.py`; set `VIES_LIVE=1` to check German VAT IDs against the real EU VIES service.
 
-**IDs:** a submission ID is a random code per submission; a vendor ID (V-xxxxxx) is issued only when a company is approved (by the rules or a reviewer) and is the same for all of that company's submissions.
+**IDs:** a submission ID is a random code per submission; a vendor ID (V + country + 6 letters/digits, e.g. VIN7A3D49) is issued only when a company is approved (by the rules or a reviewer) and is the same for all of that company's submissions.

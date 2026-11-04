@@ -21,8 +21,9 @@ CREATE TABLE IF NOT EXISTS vendors(company_key TEXT, company_name TEXT, bank_acc
 """
 
 
-def new_vendor_id():
-    return "V-" + uuid.uuid4().hex[:6].upper()
+def new_vendor_id(country):
+    """V + country code + 6 random letters/digits, e.g. VIN7A3D49. Letters and digits only."""
+    return "V" + (country if country in ("IN", "US", "DE") else "XX") + uuid.uuid4().hex[:6].upper()
 
 
 def connect():
@@ -31,7 +32,7 @@ def connect():
     conn.executescript(SCHEMA)
     if not conn.execute("SELECT 1 FROM vendors").fetchone():  # an empty master is re-filled with the vendors that were already on file
         conn.executemany("INSERT INTO vendors VALUES (:company_key, :company_name, :bank_account_number, :mobile, :email, :address)", VENDORS_ON_FILE)
-        conn.executemany("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", [(v["company_key"], new_vendor_id()) for v in VENDORS_ON_FILE])
+        conn.executemany("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", [(v["company_key"], new_vendor_id(v["country"])) for v in VENDORS_ON_FILE])
         conn.commit()
     return conn
 
@@ -63,7 +64,7 @@ def save_run(submission, decision, seconds, parent_id=None, files=None):
             decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
         conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
         if key and decision["status"] == "Approved":  # a vendor ID is the vendor-master number: only an approved company gets one
-            conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (key, new_vendor_id()))
+            conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (key, new_vendor_id(submission.get("country"))))
     return run_id
 
 
@@ -72,9 +73,9 @@ def save_decision(run_id, decision, note, reviewer):
         conn.execute("INSERT INTO decisions(run_id, decision, note, reviewer, ts) VALUES (?,?,?,?,?)", (run_id, decision, note, reviewer, now()))
         conn.execute("DELETE FROM claims WHERE run_id=?", (run_id,))  # a decided run is nobody's any more
         if decision == "Approved":  # a reviewer approving a company makes it a vendor too
-            key = company_key(json.loads(conn.execute("SELECT payload FROM runs WHERE run_id=?", (run_id,)).fetchone()["payload"]))
-            if key:
-                conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (key, new_vendor_id()))
+            payload = json.loads(conn.execute("SELECT payload FROM runs WHERE run_id=?", (run_id,)).fetchone()["payload"])
+            if company_key(payload):
+                conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (company_key(payload), new_vendor_id(payload.get("country"))))
 
 
 def claims():

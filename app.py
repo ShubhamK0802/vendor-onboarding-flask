@@ -28,8 +28,8 @@ DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT r
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
 LEVELS = {1: "Vendor can fix", 2: "Needs review", 3: "Contradiction"}
 COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Replaced": "gray"}
-SAMPLE_HINTS = {"10_existing_vendor_resubmits.json": "submit 01 first", "13_company_id_new_name.json": "submit 01 first", "20_duplicate_application.json": "submit 01 first",
-                "06_near_miss_name.json": "submit twice, the 2nd as a resubmission"}
+SAMPLE_HINTS = {"09_fix_near_miss_name.json": "submit twice, the 2nd as a resubmission", "11_review_existing_vendor_changes_bank_account.json": "submit 01 first",
+                "13_review_company_id_under_new_name.json": "submit 01 first", "20_reject_duplicate_application.json": "submit 01 first"}
 PROGRESS = {}  # token -> live progress of one run. ponytail: in-memory, so one worker process; use the database if it must scale out
 
 
@@ -67,7 +67,8 @@ def effect(finding):
 
 
 PRIORITY_REASONS = {"DUPLICATE_BANK_ACCOUNT": "bank account already used by another vendor", "BANK_DETAILS_CHANGED": "bank account changed on an onboarded vendor",
-                    "DUPLICATE_KEY_NEW_NAME": "company ID registered under a different name", "BANK_COUNTRY_DIFFERS": "bank in another country than the company"}
+                    "DUPLICATE_KEY_NEW_NAME": "company ID registered under a different name", "BANK_COUNTRY_DIFFERS": "bank in another country than the company",
+                    "SANCTIONS_POSSIBLE": "name close to a sanctions watchlist entry"}
 
 
 def priority_why(run):
@@ -108,7 +109,7 @@ def sample_files():
 @app.get("/")
 def submit_page():
     waiting = [r for r in store.load_runs() if r["waiting_on"] == "Vendor"]
-    samples = [(n, f"{n}  ({SAMPLE_HINTS[n]})" if n in SAMPLE_HINTS else n) for n in sample_files()]
+    samples = [(n, n[:-5].replace("_", " ") + (f"  ({SAMPLE_HINTS[n]})" if n in SAMPLE_HINTS else "")) for n in sample_files()]
     return render_template("submit.html", waiting=waiting, samples=samples, entity=ENTITY, country=COUNTRY, names=COUNTRY_NAMES)
 
 
@@ -289,7 +290,9 @@ def dashboard():
     total = len(runs)
     pct = lambda n: f"{n / total:.0%}" if total else "0%"
     count = lambda **kw: sum(all(r[k] == v for k, v in kw.items()) for r in runs)
-    metrics = [("Approved automatically", count(status="Approved"), pct(count(status="Approved")), "The rules approved it with no human involved"),
+    handled = sum(r["sub_status"] != NEEDS_REVIEW for r in runs)
+    metrics = [("Handled without a human", handled, pct(handled), "Approved, sent back to the vendor, or rejected by the rules alone"),
+               ("Approved automatically", count(status="Approved"), pct(count(status="Approved")), "The rules approved it with no human involved"),
                ("Sent to a reviewer", count(sub_status=NEEDS_REVIEW), pct(count(sub_status=NEEDS_REVIEW)), "The rules could not decide, so a reviewer must"),
                ("Sent back to vendor", count(sub_status=VENDOR_TO_FIX), pct(count(sub_status=VENDOR_TO_FIX)), "The vendor can fix it and resubmit"),
                ("Rejected", count(status="Rejected"), pct(count(status="Rejected")), "Identity red flags; not onboarded")]

@@ -33,6 +33,10 @@
   <ul>
     <li><b>Two or more contradictions at once</b> (for example GSTIN and PAN disagree and the PAN type does not fit): a typo does not explain that. One contradiction alone is a mistake the vendor can fix.</li>
     <li><b>A duplicate with nothing new:</b> a company that is already onboarded applies again with exactly the same details.</li>
+    <li><b>The name is on the sanctions watchlist</b> (an exact match). A name that is only close goes to a reviewer, because false matches are common.</li>
+    <li><b>The bank is in an embargoed country</b> (Iran, North Korea, Syria, Cuba).</li>
+    <li><b>The tax registration is cancelled</b> in the registry.</li>
+    <li><b>The tax ID is a placeholder</b> such as 12-3456789 or all the same digit.</li>
     <li><b>Still wrong after a second attempt:</b> the vendor was asked to fix something and resubmits with the same problem (for example a near-miss name, where a lookalike name is a known fraud tactic).</li>
     <li><b>No reply within {{ fix_deadline_days }} days</b> to a fix request: the submission closes by itself.</li>
     <li><b>A reviewer rejects it.</b></li>
@@ -40,13 +44,18 @@
   <p>Anything the system cannot positively verify is never approved automatically.</p>
 
   <h2>How the checks are sorted</h2>
-  <p>Seven checks run in order: completeness, country routing, format checks, documents, identity checks, name match, duplicate check. Each finding is one of three kinds:</p>
+  <p>Eight checks run in order: completeness, country routing, format checks, documents, identity checks, name match, verification (registry, sanctions, embargo, placeholder IDs), duplicate check. Each finding is one of three kinds:</p>
   <ul>
     <li><b>Vendor can fix</b>: a missing field or document, a typo in a format, a name that nearly matches the bank account holder, a legal form that differs (LLP vs Private Limited).</li>
-    <li><b>Needs review</b>: a bank account already used by another vendor, an onboarded vendor whose bank account or details changed, a company ID under a different name, a shared phone or email, a foreign bank account, an unsupported country, names in a non-Latin script.</li>
+    <li><b>Needs review</b>: a bank account already used by another vendor, a possible sanctions-list match, an onboarded vendor whose bank account or details changed, a company ID under a different name, a shared phone or email, a foreign bank account, an unsupported country, names in a non-Latin script.</li>
     <li><b>Contradiction</b>: the tax ID belongs to another country, GSTIN and PAN disagree, the PAN type does not fit the entity, or the bank account is in a completely different company's name. One alone is fixable; two at once reject.</li>
   </ul>
   <p>If the vendor is asked to use an account in the company's own name and sends the same account again, a person reads their explanation (for example a signed letter of authorisation).</p>
+
+  <h2>What verification uses</h2>
+  <p>The registry and the watchlist are <b>demo data</b> written by <code>samples.py</code> (<code>registry.json</code>, <code>sanctions.json</code>); the names on the watchlist are fictional. They show where real services plug in: the tax authorities and the official OFAC, EU and UN lists.
+     A tax ID the demo registry does not know is not checked, and the stage says so. For German VAT IDs the real EU VIES check can be switched on with <code>VIES_LIVE=1</code>; it is off by default because the sample VAT IDs are not real registrations.
+     Whether the bank account really belongs to the vendor is not checked: that needs a bank's account-holder name service.</p>
 
   <h2>What happens after the verdict</h2>
   <ul>
@@ -67,7 +76,7 @@
 
   <h2>Known limits</h2>
   <ul>
-    <li>No live checks against tax registries, sanctions lists or bank-account ownership.</li>
+    <li>Registry and sanctions checks use demo data, and bank-account ownership is not checked. The embargo list is simplified.</li>
     <li>Documents are stored for the reviewer to open, but their contents are not read. A forged document of the right type would pass.</li>
     <li>India, US and Germany only, one bank account per submission. No document expiry tracking, and no reminder to the vendor before a fix request closes after {{ fix_deadline_days }} days.</li>
     <li>Data lives in a SQLite file; on free hosting it can reset on restart.</li>

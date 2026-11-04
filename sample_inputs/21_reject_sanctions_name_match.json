@@ -1,31 +1,31 @@
 {
-  "company_name": "Kestrel Fabrics Private Limited",
+  "company_name": "Northern Star Arms Trading Limited",
   "entity_type": "company",
   "country": "IN",
-  "email": "ap@kestrel.example",
-  "mobile": "9823456701",
+  "email": "accounts@northern.example",
+  "mobile": "9823456712",
   "address": "12 MG Road, Bengaluru, Karnataka 560001",
-  "tax_id": "27KESCF2345K1",
-  "pan": "KESCF2345K",
-  "bank_account_name": "Kestrel Fabrics Private Limited",
-  "bank_account_number": "71000123456701",
+  "tax_id": "27NORCN3457R1Z8",
+  "pan": "NORCN3457R",
+  "bank_account_name": "Northern Star Arms Trading Limited",
+  "bank_account_number": "80000123456712",
   "bank_code": "HDFC0001234",
-  "website": "https://www.apexglobal.example",
+  "website": "https://www.northern.example",
   "documents": {
     "tax_document": {
-      "filename": "apex_gst_certificate.pdf",
+      "filename": "northern_tax.pdf",
       "file_type": "pdf",
       "size_bytes": 184320,
       "declared_type": "tax_document"
     },
     "registration": {
-      "filename": "apex_incorporation.pdf",
+      "filename": "northern_registration.pdf",
       "file_type": "pdf",
       "size_bytes": 220160,
       "declared_type": "registration"
     },
     "voided_cheque": {
-      "filename": "apex_cheque.pdf",
+      "filename": "northern_cheque.pdf",
       "file_type": "pdf",
       "size_bytes": 98304,
       "declared_type": "voided_cheque"

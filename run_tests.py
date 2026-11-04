@@ -10,7 +10,7 @@ import store
 from decide import parse_submission, run_pipeline
 from datetime import datetime, timedelta
 
-from samples import CASES, INDIA, fresh, short_tax_id
+from samples import CASES, INDIA, fresh, make_iban, short_tax_id
 
 store.DB_PATH = os.path.join(tempfile.mkdtemp(), "test.db")
 failed = []
@@ -32,10 +32,8 @@ def run(run_id):
 
 
 # ---- rules: every sample gives the expected verdict (each with the vendors it needs on file) ----
-for name, base, edit, history, status, sub_status in CASES:
-    data = copy.deepcopy(base)
-    edit(data)
-    result = run_pipeline(data, history)
+for name, data, history, status, sub_status, _ in CASES:
+    result = run_pipeline(copy.deepcopy(data), history)
     check((result["status"], result["sub_status"]) == (status, sub_status), name, f"-> {result['status']} {result['sub_status']}")
 
 from checks import check_formats, check_identity, check_name_match, german_vat_check_digit  # noqa: E402
@@ -53,9 +51,9 @@ check([f["code"] for f in check_identity(dict(de, bank_account_number="GB82WEST1
 check(not check_name_match({"company_name": "M\u00fcller S\u00f6hne GmbH", "bank_account_name": "Mueller Soehne GmbH"})["findings"], "umlauts match their bank-statement spelling (ue, oe)")
 check([f["code"] for f in check_name_match({"company_name": "Sakura K.K. \u682a\u5f0f\u4f1a\u793e", "bank_account_name": "Sakura KK"})["findings"]] == ["NAME_NON_LATIN"], "names in non-Latin scripts go to review instead of being compared by spelling")
 
-with open("sample_inputs/11_malformed.json") as handle:
+with open("sample_inputs/99_error_malformed_json.json") as handle:
     data, error = parse_submission(handle.read())
-check(data is None and error, "11_malformed_json", f"-> {error}")
+check(data is None and error, "99_error_malformed_json", f"-> {error}")
 
 # ---- workflow: starts empty, then real runs ----
 check(store.load_runs() == [] and len(store.known_vendors([])) == 1, "history starts empty; only the vendors on file are known")
@@ -122,6 +120,33 @@ with store.connect() as conn:
 check(run(stale)["final"] == "Rejected" and "Closed" in run(stale)["final_sub"] and run(stale)["waiting_on"] == "-", "status definitions: a fix request nobody answers for 8 days closes as rejected")
 check(run(recent)["final"] == "Pending" and run(recent)["waiting_on"] == "Vendor", "status definitions: a fresh fix request stays open")
 
+# ---- verification: placeholders, registry, sanctions, embargoes, the EU check
+import checks  # noqa: E402
+from checks import check_verification, is_placeholder  # noqa: E402
+
+vcodes = lambda sub: [f["code"] for f in check_verification(sub)["findings"]]
+check(is_placeholder("123456789") and is_placeholder("111111111") and is_placeholder("987654321") and not is_placeholder("042958371") and not is_placeholder("271846352"), "verification: placeholder tax IDs are recognised, real-looking ones are not")
+check(vcodes({"country": "US", "tax_id": "12-3456789"}) == ["PLACEHOLDER_TAX_ID"], "verification: the famous 12-3456789 EIN is a placeholder")
+apex = {"country": "IN", "tax_id": "29ABCCA1234D1Z6", "company_name": "Apex Global Private Limited"}
+check(vcodes(apex) == [] and vcodes(dict(apex, company_name="Apex Traders")) == ["REGISTRY_NAME_MISMATCH"], "verification: the registry accepts the registered name and flags a different one")
+unknown = check_verification({"country": "IN", "tax_id": "27UNKNOWN1234Z1Z5", "company_name": "Nobody Ltd"})
+check(unknown["findings"] == [] and "not checked" in unknown["note"], "verification: an ID the demo registry does not know is not checked, and says so")
+check(vcodes({"company_name": "Northern Star Arms Trading Limited"}) == ["SANCTIONS_MATCH"] and vcodes({"company_name": "Northern Star Arm Trading Ltd"}) == ["SANCTIONS_POSSIBLE"] and vcodes({"company_name": "Quartz Mills Private Limited"}) == [],
+      "verification: an exact watchlist name matches, a close one is only possible, an unrelated one is clear")
+check(vcodes({"bank_account_name": "Red Falcon Shipping Co", "company_name": "Innocent Traders"}) == ["SANCTIONS_MATCH"], "verification: the bank account holder is screened too")
+iran = {"bank_account_number": make_iban("IR", "0120000000012345678901"), "bank_code": "BKMTIRTHXXX"}
+check(vcodes(iran) == ["EMBARGOED_BANK_COUNTRY"] and vcodes({"bank_account_number": "DE89370400440532013000", "bank_code": "COBADEFFXXX"}) == [], "verification: a bank in an embargoed country is caught, a German one is not")
+os.environ["VIES_LIVE"] = "1"
+de_vat = {"country": "DE", "tax_id": "DE136695976", "company_name": "Whoever GmbH"}
+checks.vies_lookup = lambda vat: {"valid": True}
+check(vcodes(de_vat) == [], "verification: the EU VAT check passes a registered number")
+checks.vies_lookup = lambda vat: {"valid": False}
+check(vcodes(de_vat) == ["REGISTRY_NOT_FOUND"], "verification: the EU VAT check flags an unregistered number")
+checks.vies_lookup = lambda vat: None
+down = check_verification(de_vat)
+check(down["findings"] == [] and "not checked" in down["note"], "verification: if the EU service is unreachable the vendor is not blocked")
+os.environ.pop("VIES_LIVE")
+
 store.reset()
 check(store.load_runs() == [] and store.load_decisions() == [] and len(store.known_vendors([])) == 1, "reset: no runs or decisions, vendors on file restored")
 
@@ -146,9 +171,9 @@ check(client.get("/").status_code == 200 and client.get("/about").status_code ==
 check(client.post("/api/submit", data={"mode": "sample", "sample": "../app.py"}).status_code == 400, "web: a sample name that is not in the sample folder is refused")
 check(client.post("/api/submit", data={"mode": "json", "json_file": (io.BytesIO(b'{"company_name": "x",'), "bad.json")}, content_type="multipart/form-data").status_code == 400, "web: malformed JSON gives a clear error, not a crash")
 
-done = run_web(mode="sample", sample="01_clean_india.json")
-check(done["error"] is None and len(done["stages"]) == 7 and b"Approved" in client.get(f"/run/{done['run_id']}").data, "web: sample runs through 7 stages and shows Approved")
-done = run_web(mode="sample", sample="07_shared_bank_account.json")
+done = run_web(mode="sample", sample="01_approved_india_clean.json")
+check(done["error"] is None and len(done["stages"]) == 8 and b"Approved" in client.get(f"/run/{done['run_id']}").data, "web: sample runs through 8 stages and shows Approved")
+done = run_web(mode="sample", sample="12_review_bank_account_shared_with_another_vendor.json")
 pending_id = done["run_id"]
 check(pending_id.encode() in client.get("/review").data, "web: a pending run appears on the reviewer desk")
 check(b"enter your name" in client.post(f"/review/{pending_id}", data={"decision": "Approved", "note": "ok ok ok"}, follow_redirects=True).data, "web: a decision without a name is refused")
@@ -161,20 +186,20 @@ check(client.get(f"/doc/{done['run_id']}/tax_document").data == b"%PDF-1.4 hello
 check(client.get(f"/api/prefill/{done['run_id']}").get_json().get("company_name") == "Form Vendor LLC" and "bank_account_number" not in client.get(f"/api/prefill/{done['run_id']}").get_json(),
       "web: resubmission prefill leaves the bank account number out")
 check(client.get("/export.csv").data.startswith(b"submission id,vendor id,submitted,company"), "web: CSV export works")
-check(b"Form Vendor LLC" in client.get("/dashboard").data and b"****" not in client.get("/export.csv").data, "web: dashboard lists the runs")
+check(b"Form Vendor LLC" in client.get("/dashboard").data and b"Handled without a human" in client.get("/dashboard").data and b"****" not in client.get("/export.csv").data, "web: dashboard lists the runs")
 client.post("/reset")
 check(b"No submissions yet" in client.get("/dashboard").data, "web: reset empties the dashboard again")
 
 # a near-miss name: the vendor corrects it once; the same finding on the resubmission rejects
-first = run_web(mode="sample", sample="06_near_miss_name.json")["run_id"]
+first = run_web(mode="sample", sample="09_fix_near_miss_name.json")["run_id"]
 check(next(r for r in store.load_runs() if r["run_id"] == first)["final"] == "Pending" and b"match your company name exactly" in client.get(f"/run/{first}").data, "web: a near-miss name is first sent back to the vendor to fix")
-again = run_web(mode="sample", sample="06_near_miss_name.json", parent=first)["run_id"]
+again = run_web(mode="sample", sample="09_fix_near_miss_name.json", parent=first)["run_id"]
 check(next(r for r in store.load_runs() if r["run_id"] == again)["final"] == "Rejected" and b"not fixed after resubmission" in client.get(f"/run/{again}").data, "web: the same near-miss on the resubmission is rejected, and the vendor is told why")
 
 # ---- reviewer desk: order, filters, taking a submission, next-up, info-requested runs ----
-contact = run_web(mode="sample", sample="15_shared_contact.json")["run_id"]  # normal priority, submitted first
-clash = run_web(mode="sample", sample="07_shared_bank_account.json")["run_id"]  # bank account clash: high priority, submitted second
-near = run_web(mode="sample", sample="08_unsupported_country.json")["run_id"]  # normal priority, newest
+contact = run_web(mode="sample", sample="14_review_shared_mobile_number.json")["run_id"]  # normal priority, submitted first
+clash = run_web(mode="sample", sample="12_review_bank_account_shared_with_another_vendor.json")["run_id"]  # bank account clash: high priority, submitted second
+near = run_web(mode="sample", sample="16_review_unsupported_country.json")["run_id"]  # normal priority, newest
 
 
 def rows(html):

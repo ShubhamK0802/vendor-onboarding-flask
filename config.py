@@ -1,4 +1,4 @@
-RULE_VERSION = "4.0"
+RULE_VERSION = "5.0"
 
 REQUIRED_FIELDS = [
     "company_name", "entity_type", "country", "email", "mobile",
@@ -65,6 +65,13 @@ REASON_LABELS = {
     "SHARED_CONTACT": "Contact details shared with another vendor",
     "EXISTING_VENDOR": "Already-onboarded vendor changed its details",
     "DUPLICATE_APPLICATION": "Already onboarded with exactly these details",
+    "PLACEHOLDER_TAX_ID": "Tax ID is a placeholder, not a real number",
+    "REGISTRY_CANCELLED": "Tax registration is cancelled or inactive",
+    "REGISTRY_NAME_MISMATCH": "Company name differs from the tax registry",
+    "REGISTRY_NOT_FOUND": "German VAT ID is not registered",
+    "SANCTIONS_MATCH": "Name matches the sanctions watchlist",
+    "SANCTIONS_POSSIBLE": "Name is close to a sanctions watchlist entry",
+    "EMBARGOED_BANK_COUNTRY": "Bank is in an embargoed country",
     "BAD_VAT_FORMAT": "German VAT ID is not DE plus 9 digits",
     "BAD_VAT_CHECKSUM": "German VAT ID fails its check digit (likely a typo)",
     "BAD_IBAN_FORMAT": "IBAN is not in the right format",
@@ -105,6 +112,13 @@ EVIDENCE_FIELDS = {
     "SHARED_CONTACT": ["mobile", "email"],
     "EXISTING_VENDOR": ["company_name", "pan", "tax_id", "mobile", "email"],
     "DUPLICATE_APPLICATION": ["company_name", "pan", "tax_id"],
+    "PLACEHOLDER_TAX_ID": ["tax_id"],
+    "REGISTRY_CANCELLED": ["company_name", "tax_id"],
+    "REGISTRY_NAME_MISMATCH": ["company_name", "tax_id"],
+    "REGISTRY_NOT_FOUND": ["tax_id"],
+    "SANCTIONS_MATCH": NAME_FIELDS,
+    "SANCTIONS_POSSIBLE": NAME_FIELDS,
+    "EMBARGOED_BANK_COUNTRY": ["bank_account_number", "bank_code"],
     "BANK_COUNTRY_DIFFERS": ["bank_account_number", "bank_code"],
     "NAME_NON_LATIN": NAME_FIELDS,
     "BANK_DETAILS_CHANGED": ["bank_account_number", "bank_code"],
@@ -123,7 +137,7 @@ VENDORS_ON_FILE = [{
 }]
 
 # Reviewer desk: these findings put money at risk, so such runs are shown first (a red-flag finding does too).
-HIGH_PRIORITY_CODES = {"DUPLICATE_BANK_ACCOUNT", "BANK_DETAILS_CHANGED", "DUPLICATE_KEY_NEW_NAME", "BANK_COUNTRY_DIFFERS"}
+HIGH_PRIORITY_CODES = {"DUPLICATE_BANK_ACCOUNT", "BANK_DETAILS_CHANGED", "DUPLICATE_KEY_NEW_NAME", "BANK_COUNTRY_DIFFERS", "SANCTIONS_POSSIBLE"}
 
 # The two reasons a run can be Pending (status names shown everywhere).
 NEEDS_REVIEW = "Needs review"
@@ -136,6 +150,14 @@ VENDOR_TO_FIX = "Vendor to fix"
 #   3. the same problem still there after the vendor was asked to fix it (a resubmission repeating a finding);
 #   4. the vendor not answering within FIX_DEADLINE_DAYS (the run closes by itself);
 #   5. a reviewer's decision.
-REJECT_ON_ITS_OWN = {"DUPLICATE_APPLICATION": "your company is already onboarded with exactly these details"}
+REJECT_ON_ITS_OWN = {
+    "DUPLICATE_APPLICATION": "your company is already onboarded with exactly these details",
+    "SANCTIONS_MATCH": "we are unable to onboard this company",  # deliberately vague: never tell a listed party what matched
+    "EMBARGOED_BANK_COUNTRY": "we cannot make payments to a bank in that country",
+    "REGISTRY_CANCELLED": "your tax registration is shown as cancelled or inactive",
+    "PLACEHOLDER_TAX_ID": "the tax ID is a placeholder, not a real registration number",
+}
+# Countries under comprehensive sanctions (simplified: a real deployment uses the current official lists).
+EMBARGOED_COUNTRIES = {"KP", "IR", "SY", "CU"}
 ESCALATE_TO_REVIEW = {"NAME_MISMATCH"}  # if the vendor repeats these, a person reads their explanation (for example a letter of authorisation)
 FIX_DEADLINE_DAYS = 7

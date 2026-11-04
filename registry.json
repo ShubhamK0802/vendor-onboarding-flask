@@ -1,0 +1,89 @@
+{
+  "_note": "SIMULATED tax registry for the demo. A real deployment calls the tax authorities (GST portal, IRS TIN matching, EU VIES).",
+  "IN": {
+    "29ABCCA1234D1Z6": {
+      "status": "active",
+      "name": "Apex Global Private Limited"
+    },
+    "27DELCP3456L1ZK": {
+      "status": "active",
+      "name": "Delta Pumps Private Limited"
+    },
+    "27GRECG4567M1ZY": {
+      "status": "active",
+      "name": "Greenfield Agro Private Limited"
+    },
+    "27LUMCG5678N1Z7": {
+      "status": "active",
+      "name": "Lumina Global Private Limited"
+    },
+    "27SUNCT4567M1ZU": {
+      "status": "active",
+      "name": "Sundara Textiles Private Limited"
+    },
+    "27HARCF6789P1Z2": {
+      "status": "active",
+      "name": "Harbor Freight Private Limited"
+    },
+    "27QUICS0123T1ZC": {
+      "status": "active",
+      "name": "Quill Stationers Private Limited"
+    },
+    "27RAJPK4821H1Z8": {
+      "status": "active",
+      "name": "Kumar Hardware Traders"
+    },
+    "27NORCN3456R1Z9": {
+      "status": "active",
+      "name": "Northern Star Arm Trading Limited"
+    },
+    "27COBCT9012S1ZW": {
+      "status": "active",
+      "name": "Cobalt Tools Private Limited"
+    },
+    "27NORCN3457R1Z8": {
+      "status": "active",
+      "name": "Northern Star Arms Trading Limited"
+    },
+    "27ORBCO5612S1ZL": {
+      "status": "cancelled",
+      "name": "Orbit Exports Private Limited"
+    }
+  },
+  "US": {
+    "842736195": {
+      "status": "active",
+      "name": "Brightwave Supplies LLC"
+    },
+    "42958371": {
+      "status": "active",
+      "name": "Pioneer Packaging LLC"
+    },
+    "29RDWCS6789L1Z8": {
+      "status": "active",
+      "name": "Redwood Supply LLC"
+    },
+    "123456789": {
+      "status": "active",
+      "name": "Summit Tools LLC"
+    }
+  },
+  "DE": {
+    "DE271846354": {
+      "status": "active",
+      "name": "Müller Söhne GmbH"
+    },
+    "DE478329150": {
+      "status": "active",
+      "name": "Rheinblick Maschinen GmbH"
+    },
+    "DE319876545": {
+      "status": "active",
+      "name": "Kraftwerk Tools GmbH"
+    },
+    "DE582619374": {
+      "status": "active",
+      "name": "Hansa Bauteile GmbH"
+    }
+  }
+}

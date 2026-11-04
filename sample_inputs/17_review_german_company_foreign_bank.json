@@ -1,31 +1,31 @@
 {
-  "company_name": "Rheinblick Maschinen GmbH",
+  "company_name": "Kraftwerk Tools GmbH",
   "entity_type": "company",
   "country": "DE",
-  "email": "ap@rheinblick.example",
-  "mobile": "+4915112345123",
+  "email": "ap@kraftwerk.example",
+  "mobile": "+4915112345319",
   "address": "Hafenstrasse 12, 20457 Hamburg",
-  "tax_id": "DE123456789",
+  "tax_id": "DE319876545",
   "pan": null,
-  "bank_account_name": "Rheinblick Maschinen GmbH",
-  "bank_account_number": "DE91100000000123456789",
-  "bank_code": "MARKDEF1100",
-  "website": "https://www.apexglobal.example",
+  "bank_account_name": "Kraftwerk Tools GmbH",
+  "bank_account_number": "GB82WEST12345698765432",
+  "bank_code": "WESTGB2LXXX",
+  "website": "https://www.kraftwerk.example",
   "documents": {
     "tax_document": {
-      "filename": "apex_gst_certificate.pdf",
+      "filename": "kraftwerk_tax.pdf",
       "file_type": "pdf",
       "size_bytes": 184320,
       "declared_type": "tax_document"
     },
     "registration": {
-      "filename": "apex_incorporation.pdf",
+      "filename": "kraftwerk_registration.pdf",
       "file_type": "pdf",
       "size_bytes": 220160,
       "declared_type": "registration"
     },
     "voided_cheque": {
-      "filename": "apex_cheque.pdf",
+      "filename": "kraftwerk_cheque.pdf",
       "file_type": "pdf",
       "size_bytes": 98304,
       "declared_type": "voided_cheque"

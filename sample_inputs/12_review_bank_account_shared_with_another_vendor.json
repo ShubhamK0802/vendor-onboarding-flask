@@ -1,0 +1,35 @@
+{
+  "company_name": "Harbor Freight Private Limited",
+  "entity_type": "company",
+  "country": "IN",
+  "email": "accounts@harbor.example",
+  "mobile": "9845678912",
+  "address": "12 MG Road, Bengaluru, Karnataka 560001",
+  "tax_id": "27HARCF6789P1Z2",
+  "pan": "HARCF6789P",
+  "bank_account_name": "Harbor Freight Private Limited",
+  "bank_account_number": "60200345678912",
+  "bank_code": "HDFC0001234",
+  "website": "https://www.harbor.example",
+  "documents": {
+    "tax_document": {
+      "filename": "harbor_tax.pdf",
+      "file_type": "pdf",
+      "size_bytes": 184320,
+      "declared_type": "tax_document"
+    },
+    "registration": {
+      "filename": "harbor_registration.pdf",
+      "file_type": "pdf",
+      "size_bytes": 220160,
+      "declared_type": "registration"
+    },
+    "voided_cheque": {
+      "filename": "harbor_cheque.pdf",
+      "file_type": "pdf",
+      "size_bytes": 98304,
+      "declared_type": "voided_cheque"
+    },
+    "passbook": null
+  }
+}

@@ -1,25 +1,25 @@
 {
-  "company_name": "Apex Global Private Limited",
+  "company_name": "Apex Holdings",
   "entity_type": "company",
   "country": "IN",
   "email": "accounts@apexglobal.example",
   "mobile": "9876501234",
-  "address": "14 MG Road, Bengaluru, Karnataka 560001",
+  "address": "12 MG Road, Bengaluru, Karnataka 560001",
   "tax_id": "29ABCCA1234D1Z6",
   "pan": "ABCCA1234D",
-  "bank_account_name": "Apex Global Private Limited",
+  "bank_account_name": "Apex Holdings",
   "bank_account_number": "50100234567891",
   "bank_code": "HDFC0001234",
-  "website": "https://www.apexglobal.example",
+  "website": "https://www.apex.example",
   "documents": {
     "tax_document": {
-      "filename": "apex_gst_certificate.pdf",
+      "filename": "apex_tax.pdf",
       "file_type": "pdf",
       "size_bytes": 184320,
       "declared_type": "tax_document"
     },
     "registration": {
-      "filename": "apex_incorporation.pdf",
+      "filename": "apex_registration.pdf",
       "file_type": "pdf",
       "size_bytes": 220160,
       "declared_type": "registration"

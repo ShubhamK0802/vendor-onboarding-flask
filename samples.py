@@ -1,66 +1,78 @@
+"""The demo vendors. Every sample is a different realistic case; `python samples.py` writes them, the demo registry and the demo watchlist.
+
+Sample files:        sample_inputs/*.json
+Demo tax registry:   registry.json   (SIMULATED: a real deployment calls the tax authorities)
+Demo watchlist:      sanctions.json  (FICTIONAL names: a real deployment screens against the official OFAC / EU / UN lists)
+"""
 import copy
 import json
 import os
 
 from checks import german_vat_check_digit, gstin_check_char
 from config import VENDORS_ON_FILE
+from normalize import normalize_id
 
-with open("sample_inputs/01_clean_india.json") as handle:
-    INDIA = json.load(handle)
+DEMO_WATCHLIST = ["Northern Star Arms Trading", "Red Falcon Shipping", "Zarya Oilfield Logistics", "Meridian Gulf Petrochemicals"]
 
-US = {
-    "company_name": "Brightwave Supplies LLC",
-    "entity_type": "company",
-    "country": "US",
-    "email": "ap@brightwave.example",
-    "mobile": "2125550143",
-    "address": "250 Hudson Street, New York, NY 10013",
-    "tax_id": "12-3456789",
-    "bank_account_name": "Brightwave Supplies LLC",
-    "bank_account_number": "4400123987",
-    "bank_code": "021000021",
-    "website": "https://www.brightwave.example",
-    "documents": {
-        "tax_document": {"filename": "brightwave_w9.pdf", "file_type": "pdf", "size_bytes": 150000, "declared_type": "tax_document"},
-        "registration": {"filename": "brightwave_articles.pdf", "file_type": "pdf", "size_bytes": 210000, "declared_type": "registration"},
-        "voided_cheque": {"filename": "brightwave_cheque.pdf", "file_type": "pdf", "size_bytes": 90000, "declared_type": "voided_cheque"},
-        "passbook": None,
-    },
-}
 
+def docs(prefix, cheque=True):
+    def one(kind, size, slot):
+        return {"filename": f"{prefix}_{kind}.pdf", "file_type": "pdf", "size_bytes": size, "declared_type": slot}
+    return {"tax_document": one("tax", 184320, "tax_document"), "registration": one("registration", 220160, "registration"),
+            "voided_cheque": one("cheque", 98304, "voided_cheque") if cheque else None, "passbook": None}
+
+
+def gstin_for(pan, state="27"):
+    return state + pan + "1Z" + gstin_check_char(state + pan + "1Z")
+
+
+def make_iban(country, bban):
+    """ISO 13616: the 2 check digits come from mod 97 over the account part, then the country letters, then 00."""
+    digits = "".join(str(int(ch, 36)) for ch in bban + country) + "00"
+    return f"{country}{98 - int(digits) % 97:02d}{bban}"
+
+
+def indian(name, pan, account, mobile=None, email=None, address="12 MG Road, Bengaluru, Karnataka 560001", entity="company", holder=None, state="27", ifsc="HDFC0001234"):
+    slug = name.split()[0].lower()
+    return {"company_name": name, "entity_type": entity, "country": "IN", "email": email or f"accounts@{slug}.example", "mobile": mobile or "98" + account[-8:],
+            "address": address, "tax_id": gstin_for(pan, state), "pan": pan, "bank_account_name": holder or name, "bank_account_number": account,
+            "bank_code": ifsc, "website": f"https://www.{slug}.example", "documents": docs(slug)}
+
+
+def american(name, ein, account, mobile="2125550143", routing="021000021"):
+    slug = name.split()[0].lower()
+    return {"company_name": name, "entity_type": "company", "country": "US", "email": f"ap@{slug}.example", "mobile": mobile,
+            "address": "250 Hudson Street, New York, NY 10013", "tax_id": ein, "pan": None, "bank_account_name": name, "bank_account_number": account,
+            "bank_code": routing, "website": f"https://www.{slug}.example", "documents": docs(slug)}
+
+
+def german(name, base8, bban, bic, holder=None, iban=None, swap=False):
+    """base8 is the 8 digits after DE; swap=True transposes two of them after the check digit was computed (a typing slip)."""
+    check = german_vat_check_digit(base8)
+    typed = base8[:2] + base8[3] + base8[2] + base8[4:] if swap else base8
+    slug = name.split()[0].lower().replace("ü", "ue")
+    return {"company_name": name, "entity_type": "company", "country": "DE", "email": f"ap@{slug}.example", "mobile": "+4915112345" + base8[:3],
+            "address": "Hafenstrasse 12, 20457 Hamburg", "tax_id": f"DE{typed}{check}", "pan": None, "bank_account_name": holder or name,
+            "bank_account_number": iban or make_iban("DE", bban), "bank_code": bic, "website": f"https://www.{slug}.example", "documents": docs(slug)}
+
+
+# ---- kept for the tests: one Indian company that is "on file" once it has been approved
+INDIA = indian("Apex Global Private Limited", "ABCCA1234D", "50100234567891", mobile="9876501234", email="accounts@apexglobal.example")
+INDIA["tax_id"] = "29ABCCA1234D1Z6"  # a Karnataka registration (state 29)
 ORION = VENDORS_ON_FILE[0]
-
-APEX = {
-    "company_key": "ABCCA1234D",
-    "company_name": "Apex Global Private Limited",
-    "bank_account_number": "50100234567891",
-    "mobile": "9876501234",
-    "email": "accounts@apexglobal.example",
-    "address": INDIA["address"],
-}
-
+APEX = {"company_key": "ABCCA1234D", "company_name": INDIA["company_name"], "bank_account_number": INDIA["bank_account_number"],
+        "mobile": INDIA["mobile"], "email": INDIA["email"], "address": INDIA["address"]}
 SEED = [ORION]
 
+
 def fresh(d, name, pan, account, mobile=None, email=None, us=False):
-    """Give a sample its own company, so samples never collide with each other (only 10 and 13 reuse Apex on purpose)."""
+    """Give a company its own identity (used by the tests)."""
     slug = name.split()[0].lower()
     d.update(company_name=name, bank_account_name=name, bank_account_number=account, mobile=mobile or "98" + account[-8:], email=email or f"ap@{slug}.example")
     if us:
         d["tax_id"] = pan
     else:
-        d.update(pan=pan, tax_id="27" + pan + "1Z" + gstin_check_char("27" + pan + "1Z"))
-    return d
-
-
-def iban_for(bban):
-    """A German IBAN is DE + 2 check digits + the 18-digit bank code and account number."""
-    return f"DE{98 - int(bban + '131400') % 97:02d}{bban}"
-
-
-def germany(d, name, base8, bban, bic, holder=None, iban=None):
-    d.update(company_name=name, bank_account_name=holder or name, country="DE", entity_type="company", pan=None,
-             tax_id=f"DE{base8}{german_vat_check_digit(base8)}", bank_account_number=iban or iban_for(bban), bank_code=bic,
-             mobile="+4915112345" + base8[:3], email=f"ap@{name.split()[0].lower().replace(chr(252), 'ue')}.example", address="Hafenstrasse 12, 20457 Hamburg")
+        d.update(pan=pan, tax_id=gstin_for(pan))
     return d
 
 
@@ -68,40 +80,70 @@ def short_tax_id(d):
     d["tax_id"] = d["tax_id"][:13]
 
 
+def edit(data, **changes):
+    data = copy.deepcopy(data)
+    data.update(changes)
+    return data
+
+
+def wrong_slot():
+    d = indian("Delta Pumps Private Limited", "DELCP3456L", "72000123456702")
+    d["documents"]["registration"]["declared_type"] = "tax_document"  # an incorporation certificate uploaded into the tax-document slot
+    return d
+
+
+# (file name, submission, vendors already known to the system, expected status, expected reason, demo-registry override)
 CASES = [
-    ("01_clean_india", INDIA, lambda d: None, SEED, "Approved", None),
-    ("02_clean_us", US, lambda d: None, SEED, "Approved", None),
-    ("03_short_tax_id", INDIA, lambda d: (fresh(d, "Kestrel Fabrics Private Limited", "KESCF2345K", "71000123456701"), short_tax_id(d)), SEED, "Pending", "Vendor to fix"),
-    ("04_wrong_document_slot", INDIA, lambda d: (fresh(d, "Delta Pumps Private Limited", "DELCP3456L", "72000123456702"), d["documents"]["registration"].update(declared_type="tax_document")), SEED, "Pending", "Vendor to fix"),
-    ("05_suffix_spelling", INDIA, lambda d: (fresh(d, "Sundara Textiles Private Limited", "SUNCT4567M", "73000123456703"), d.update(bank_account_name="Sundara Textiles Pvt. Ltd.")), SEED, "Approved", None),
-    ("06_near_miss_name", INDIA, lambda d: (fresh(d, "Lumina Global Private Limited", "LUMCG5678N", "74000123456704"), d.update(bank_account_name="Lumina Globe Private Limited")), SEED, "Pending", "Vendor to fix"),
-    ("07_shared_bank_account", INDIA, lambda d: fresh(d, "Harbor Freight Private Limited", "HARCF6789P", "60200345678912"), SEED, "Pending", "Needs review"),
-    ("08_unsupported_country", INDIA, lambda d: (fresh(d, "Atlas Metals Private Limited", "ATLCM7890Q", "75000123456705"), d.update(country="BR")), SEED, "Pending", "Needs review"),
-    ("09_missing_doc_and_holder_mismatch", INDIA, lambda d: (fresh(d, "Birch Papers Private Limited", "BIRCP8901R", "76000123456706"), d["documents"].update(voided_cheque=None), d.update(bank_account_name="Zenith Traders")), SEED, "Pending", "Vendor to fix"),
-    ("10_existing_vendor_resubmits", INDIA, lambda d: d.update(address="14 MG Road, Bengaluru, Karnataka 560001"), SEED + [APEX], "Pending", "Needs review"),
-    ("12_identity_fields_contradict", INDIA, lambda d: (fresh(d, "Cobalt Tools Private Limited", "COBCT9012S", "77000123456707"), d.update(pan="ZZZZZ9999Z")), SEED, "Rejected", None),
-    ("13_company_id_new_name", INDIA, lambda d: d.update(company_name="Apex Holdings", bank_account_name="Apex Holdings"), SEED + [APEX], "Pending", "Needs review"),
-    ("14_us_vendor_indian_tax_id", US, lambda d: (fresh(d, "Redwood Supply LLC", "29ABCCA1234D1Z6", "4400555111", mobile="3105550188", us=True)), SEED, "Pending", "Vendor to fix"),
-    ("15_shared_contact", INDIA, lambda d: fresh(d, "Quill Stationers Private Limited", "QUICS0123T", "78000123456708", mobile="9000011111"), SEED, "Pending", "Needs review"),
-    ("16_clean_germany", INDIA, lambda d: germany(d, "Nordlicht Logistik GmbH", "13669597", "370400440532013000", "COBADEFFXXX"), SEED, "Approved", None),
-    ("17_germany_bad_vat_checksum", INDIA, lambda d: (germany(d, "Rheinblick Maschinen GmbH", "12345678", "100000000123456789", "MARKDEF1100"), d.update(tax_id=d["tax_id"][:-1] + str((int(d["tax_id"][-1]) + 1) % 10))), SEED, "Pending", "Vendor to fix"),
-    ("18_germany_umlaut_names", INDIA, lambda d: germany(d, "Müller Söhne GmbH", "27123456", "120300000000202051", "BYLADEM1001", holder="Mueller Soehne GmbH"), SEED, "Approved", None),
-    ("19_germany_foreign_bank", INDIA, lambda d: germany(d, "Kraftwerk Tools GmbH", "31987654", "", "WESTGB2LXXX", iban="GB82WEST12345698765432"), SEED, "Pending", "Needs review"),
-    ("20_duplicate_application", INDIA, lambda d: None, SEED + [APEX], "Rejected", None),
+    # ---------------- Approved: nothing wrong
+    ("01_approved_india_clean", INDIA, SEED, "Approved", None, None),
+    ("02_approved_us_clean", american("Brightwave Supplies LLC", "84-2736195", "4400123987"), SEED, "Approved", None, None),
+    ("03_approved_germany_umlaut_names", german("Müller Söhne GmbH", "27184635", "120300000000202051", "BYLADEM1001", holder="Mueller Soehne GmbH"), SEED, "Approved", None, None),
+    # ---------------- Pending: Vendor to fix (a mistake or gap the vendor can correct)
+    ("04_fix_us_ein_dropped_zero", american("Pioneer Packaging LLC", "42958371", "5100234567", mobile="3125550101"), SEED, "Pending", "Vendor to fix", None),
+    ("05_fix_wrong_document_in_slot", wrong_slot(), SEED, "Pending", "Vendor to fix", None),
+    ("06_fix_german_vat_typo", german("Rheinblick Maschinen GmbH", "47382915", "100000000123456789", "MARKDEF1100", swap=True), SEED, "Pending", "Vendor to fix", None),
+    ("07_fix_us_company_with_indian_gstin", edit(american("Redwood Supply LLC", "x", "4400555111", mobile="3105550188"), tax_id=gstin_for("RDWCS6789L", "29")), SEED, "Pending", "Vendor to fix", None),
+    ("08_fix_third_party_bank_account", indian("Greenfield Agro Private Limited", "GRECG4567M", "73000123456703", holder="Sharma & Associates Chartered Accountants"), SEED, "Pending", "Vendor to fix", None),
+    ("09_fix_near_miss_name", indian("Lumina Global Private Limited", "LUMCG5678N", "74000123456704", holder="Lumina Globe Private Limited"), SEED, "Pending", "Vendor to fix", None),
+    ("10_fix_trade_name_not_legal_name", indian("Sundara Silks", "SUNCT4567M", "75000123456705"), SEED, "Pending", "Vendor to fix", {"name": "Sundara Textiles Private Limited"}),
+    # ---------------- Pending: Needs review (only our staff can settle it)
+    ("11_review_existing_vendor_changes_bank_account", edit(INDIA, bank_account_number="60100987654321"), SEED + [APEX], "Pending", "Needs review", None),
+    ("12_review_bank_account_shared_with_another_vendor", indian("Harbor Freight Private Limited", "HARCF6789P", ORION["bank_account_number"]), SEED, "Pending", "Needs review", None),
+    ("13_review_company_id_under_new_name", edit(INDIA, company_name="Apex Holdings", bank_account_name="Apex Holdings"), SEED + [APEX], "Pending", "Needs review", None),
+    ("14_review_shared_mobile_number", indian("Quill Stationers Private Limited", "QUICS0123T", "78000123456708", mobile=ORION["mobile"]), SEED, "Pending", "Needs review", None),
+    ("15_review_sole_proprietor_personal_account", indian("Kumar Hardware Traders", "RAJPK4821H", "76000123456706", entity="sole_proprietor", holder="Rajesh Kumar"), SEED, "Pending", "Needs review", None),
+    ("16_review_unsupported_country", edit(indian("Atlas Metals Private Limited", "ATLCM7890Q", "75000123456709"), country="BR"), SEED, "Pending", "Needs review", None),
+    ("17_review_german_company_foreign_bank", german("Kraftwerk Tools GmbH", "31987654", "", "WESTGB2LXXX", iban="GB82WEST12345698765432"), SEED, "Pending", "Needs review", None),
+    ("18_review_possible_sanctions_match", indian("Northern Star Arm Trading Limited", "NORCN3456R", "77000123456707"), SEED, "Pending", "Needs review", None),
+    # ---------------- Rejected: cannot be approved as submitted, and a correction or a review would not change that
+    ("19_reject_two_contradictions", edit(indian("Cobalt Tools Private Limited", "COBCT9012S", "79000123456711"), pan="ZZZZZ9999Z"), SEED, "Rejected", None, None),
+    ("20_reject_duplicate_application", INDIA, SEED + [APEX], "Rejected", None, None),
+    ("21_reject_sanctions_name_match", indian("Northern Star Arms Trading Limited", "NORCN3457R", "80000123456712"), SEED, "Rejected", None, None),
+    ("22_reject_embargoed_bank_country", german("Hansa Bauteile GmbH", "58261937", "", "BKMTIRTHXXX", iban=make_iban("IR", "0120000000012345678901")), SEED, "Rejected", None, None),
+    ("23_reject_cancelled_registration", indian("Orbit Exports Private Limited", "ORBCO5612S", "81000123456713"), SEED, "Rejected", None, {"status": "cancelled"}),
+    ("24_reject_placeholder_tax_id", american("Summit Tools LLC", "12-3456789", "6600123987", mobile="4155550177"), SEED, "Rejected", None, None),
 ]
 
 
 def write_samples():
     os.makedirs("sample_inputs", exist_ok=True)
-    for name, base, edit, history, status, sub_status in CASES:
-        data = copy.deepcopy(base)
-        edit(data)
-        with open(f"sample_inputs/{name}.json", "w") as handle:
+    for name in os.listdir("sample_inputs"):
+        os.remove(os.path.join("sample_inputs", name))
+    registry = {"_note": "SIMULATED tax registry for the demo. A real deployment calls the tax authorities (GST portal, IRS TIN matching, EU VIES).", "IN": {}, "US": {}, "DE": {}}
+    for name, data, history, status, reason, override in CASES:
+        with open(f"sample_inputs/{name}.json", "w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2)
-    with open("sample_inputs/11_malformed.json", "w") as handle:
+        key = normalize_id(data.get("tax_id"))
+        if data["country"] in ("IN", "US", "DE") and key and (override or key not in registry[data["country"]]):
+            registry[data["country"]][key] = {"status": "active", "name": data["company_name"], **(override or {})}
+    with open("sample_inputs/99_error_malformed_json.json", "w", encoding="utf-8") as handle:
         handle.write('{"company_name": "Apex Global",')
+    with open("registry.json", "w", encoding="utf-8") as handle:
+        json.dump(registry, handle, indent=2, ensure_ascii=False)
+    with open("sanctions.json", "w", encoding="utf-8") as handle:
+        json.dump({"_note": "FICTIONAL demo watchlist. A real deployment screens against the official OFAC, EU and UN lists.", "names": DEMO_WATCHLIST}, handle, indent=2)
 
 
 if __name__ == "__main__":
     write_samples()
-    print("sample files written")
+    print(f"{len(CASES)} samples, registry.json and sanctions.json written")

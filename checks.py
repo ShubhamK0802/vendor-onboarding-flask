@@ -1,12 +1,15 @@
+import json
+import os
 import re
 import unicodedata
+import urllib.request
 from collections import namedtuple
 
 from rapidfuzz import fuzz
 
 from config import (
     ALLOWED_FILE_TYPES, BANK_PROOF_DOCS, FIX, LEGAL_FORMS, NAME_REVIEW_THRESHOLD, PAN_HOLDER_CODES, RED,
-    REQUIRED_BY_COUNTRY, REQUIRED_DOCS, REQUIRED_FIELDS, REVIEW, STRICT_SUFFIX_MATCH, SUPPORTED_COUNTRIES,
+    REQUIRED_BY_COUNTRY, REQUIRED_DOCS, REQUIRED_FIELDS, REVIEW, STRICT_SUFFIX_MATCH, SUPPORTED_COUNTRIES, EMBARGOED_COUNTRIES,
 )
 from normalize import clean_value, core_name, normalize_id, normalize_name
 
@@ -211,7 +214,90 @@ def check_name_match(submission):
     return make_result("name_match", [make_finding("NAME_MISMATCH", RED, "Use a bank account in your company's name, or attach a signed authorisation letter")])
 
 
-# ---- 7. duplicates ------------------------------------------------------------------------------
+# ---- 7. verification: is the company real, listed, or placeholder? ---------------------------------
+
+def _load(name):
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), name), encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return {}
+
+
+# DEMO DATA, written by samples.py. A real deployment replaces these two lookups with the tax authorities and the official sanctions lists.
+REGISTRY, WATCHLIST = _load("registry.json"), _load("sanctions.json")
+
+
+def vies_lookup(vat_id):
+    """The EU's own VAT check (free). Only used when VIES_LIVE=1; None means it could not be reached, which never blocks a vendor."""
+    try:
+        with urllib.request.urlopen(f"https://ec.europa.eu/taxation_customs/vies/rest-api/ms/{vat_id[:2]}/vat/{vat_id[2:]}", timeout=5) as reply:
+            return {"valid": bool(json.load(reply).get("isValid"))}
+    except Exception:
+        return None
+
+
+def longest_run(digits):
+    """The longest stretch counting up or down by one (123456789 is 9)."""
+    best = up = down = 1
+    for before, after in zip(digits, digits[1:]):
+        step = int(after) - int(before)
+        up = up + 1 if step == 1 else 1
+        down = down + 1 if step == -1 else 1
+        best = max(best, up, down)
+    return best
+
+
+def is_placeholder(digits):
+    """All the same digit, or a run of 7+ up or down: nobody has a real registration number like that."""
+    return len(set(digits)) == 1 or longest_run(digits) >= 7
+
+
+def check_verification(submission):
+    country, tax_id = normalize_id(submission.get("country")), normalize_id(submission.get("tax_id"))
+    company, findings, notes = submission.get("company_name") or "", [], []
+
+    digits = re.sub(r"\D", "", tax_id or "") if country in ("US", "DE") else ""
+    if len(digits) >= 8 and is_placeholder(digits):
+        findings.append(make_finding("PLACEHOLDER_TAX_ID", REVIEW, "The tax ID is a placeholder, not a real registration number"))
+
+    if country == "DE" and tax_id and VAT_DE_PATTERN.fullmatch(tax_id) and os.environ.get("VIES_LIVE") == "1":
+        found = vies_lookup(tax_id)
+        if found is None:
+            notes.append("EU VAT check unavailable: not checked")
+        elif not found["valid"]:
+            findings.append(make_finding("REGISTRY_NOT_FOUND", FIX, "This German VAT ID is not registered: check the number"))
+    elif tax_id and country in REGISTRY:
+        record = REGISTRY[country].get(tax_id)
+        if record is None:
+            notes.append("no registry record (demo registry): not checked")
+        elif record.get("status") != "active":
+            findings.append(make_finding("REGISTRY_CANCELLED", REVIEW, "The tax registration is cancelled or inactive"))
+        elif core_name(record.get("name")) and company and fuzz.token_sort_ratio(core_name(record["name"]), core_name(company)) < 85:
+            findings.append(make_finding("REGISTRY_NAME_MISMATCH", RED, "Your company name differs from the tax registry: use the registered legal name"))
+
+    names = [n for n in (company, submission.get("bank_account_name")) if n]
+    exact = near = False
+    for listed in WATCHLIST.get("names", []):
+        for name in names:
+            if core_name(name) == core_name(listed):
+                exact = True
+            elif fuzz.token_sort_ratio(core_name(name), core_name(listed)) >= 85:
+                near = True
+    if exact:
+        findings.append(make_finding("SANCTIONS_MATCH", REVIEW, "The name matches the sanctions watchlist"))
+    elif near:
+        findings.append(make_finding("SANCTIONS_POSSIBLE", REVIEW, "The name is close to a sanctions watchlist entry; compliance should confirm"))
+
+    iban, bic = normalize_id(submission.get("bank_account_number")) or "", normalize_id(submission.get("bank_code")) or ""
+    bank_countries = ([iban[:2]] if IBAN_PATTERN.fullmatch(iban) else []) + ([bic[4:6]] if BIC_PATTERN.fullmatch(bic) else [])
+    if any(code in EMBARGOED_COUNTRIES for code in bank_countries):
+        findings.append(make_finding("EMBARGOED_BANK_COUNTRY", REVIEW, "The bank is in an embargoed country"))
+
+    return make_result("verification", findings, note="; ".join(notes) or None)
+
+
+# ---- 8. duplicates ------------------------------------------------------------------------------
 
 def company_key(submission):
     country = normalize_id(submission.get("country"))

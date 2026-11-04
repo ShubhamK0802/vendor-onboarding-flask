@@ -2,7 +2,7 @@ import json
 
 from checks import (
     check_completeness, check_country, check_formats, check_documents,
-    check_identity, check_name_match, check_duplicates,
+    check_identity, check_name_match, check_verification, check_duplicates,
 )
 from config import ESCALATE_TO_REVIEW, FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION, VENDOR_TO_FIX
 
@@ -64,6 +64,7 @@ def iter_stages(submission, existing_vendors):
     yield check_documents(submission)
     yield check_identity(submission)
     yield check_name_match(submission)
+    yield check_verification(submission)
     yield check_duplicates(submission, existing_vendors)
 
 

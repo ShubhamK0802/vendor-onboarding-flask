@@ -1,31 +1,31 @@
 {
-  "company_name": "Nordlicht Logistik GmbH",
+  "company_name": "M\u00fcller S\u00f6hne GmbH",
   "entity_type": "company",
   "country": "DE",
-  "email": "ap@nordlicht.example",
-  "mobile": "+4915112345136",
+  "email": "ap@mueller.example",
+  "mobile": "+4915112345271",
   "address": "Hafenstrasse 12, 20457 Hamburg",
-  "tax_id": "DE136695976",
+  "tax_id": "DE271846354",
   "pan": null,
-  "bank_account_name": "Nordlicht Logistik GmbH",
-  "bank_account_number": "DE89370400440532013000",
-  "bank_code": "COBADEFFXXX",
-  "website": "https://www.apexglobal.example",
+  "bank_account_name": "Mueller Soehne GmbH",
+  "bank_account_number": "DE02120300000000202051",
+  "bank_code": "BYLADEM1001",
+  "website": "https://www.mueller.example",
   "documents": {
     "tax_document": {
-      "filename": "apex_gst_certificate.pdf",
+      "filename": "mueller_tax.pdf",
       "file_type": "pdf",
       "size_bytes": 184320,
       "declared_type": "tax_document"
     },
     "registration": {
-      "filename": "apex_incorporation.pdf",
+      "filename": "mueller_registration.pdf",
       "file_type": "pdf",
       "size_bytes": 220160,
       "declared_type": "registration"
     },
     "voided_cheque": {
-      "filename": "apex_cheque.pdf",
+      "filename": "mueller_cheque.pdf",
       "file_type": "pdf",
       "size_bytes": 98304,
       "declared_type": "voided_cheque"

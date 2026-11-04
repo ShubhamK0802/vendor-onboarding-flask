@@ -1,0 +1,35 @@
+{
+  "company_name": "Pioneer Packaging LLC",
+  "entity_type": "company",
+  "country": "US",
+  "email": "ap@pioneer.example",
+  "mobile": "3125550101",
+  "address": "250 Hudson Street, New York, NY 10013",
+  "tax_id": "42958371",
+  "pan": null,
+  "bank_account_name": "Pioneer Packaging LLC",
+  "bank_account_number": "5100234567",
+  "bank_code": "021000021",
+  "website": "https://www.pioneer.example",
+  "documents": {
+    "tax_document": {
+      "filename": "pioneer_tax.pdf",
+      "file_type": "pdf",
+      "size_bytes": 184320,
+      "declared_type": "tax_document"
+    },
+    "registration": {
+      "filename": "pioneer_registration.pdf",
+      "file_type": "pdf",
+      "size_bytes": 220160,
+      "declared_type": "registration"
+    },
+    "voided_cheque": {
+      "filename": "pioneer_cheque.pdf",
+      "file_type": "pdf",
+      "size_bytes": 98304,
+      "declared_type": "voided_cheque"
+    },
+    "passbook": null
+  }
+}

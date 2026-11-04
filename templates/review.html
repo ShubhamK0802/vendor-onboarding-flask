@@ -8,13 +8,6 @@
   <p><b>{{ everyone|length }}</b> vendor(s) need a human decision{% if n_high %}, <b>{{ n_high }}</b> of them high priority{% endif %}. Take any one; the order below is only a suggestion.</p>
   <form method="get" class="filters">
     <label>Order<select name="sort" onchange="this.form.submit()">{% for key, text in sorts.items() %}<option value="{{ key }}" {{ 'selected' if key == sort }}>{{ text }}</option>{% endfor %}</select></label>
-    <label>Priority<select name="priority" onchange="this.form.submit()">{% for p in ['All', 'High', 'Normal'] %}<option {{ 'selected' if p == level }}>{{ p }}</option>{% endfor %}</select></label>
-    <label>View submission
-      <select onchange="if (this.value) location.href = this.value">
-        <option value="">Choose a submission ID...</option>
-        {% for r in queue + info_waiting %}<option value="{{ url_for('review_page', run=r.run_id, **args) }}" {{ 'selected' if picked and r.run_id == picked.run_id }}>{{ r.run_id }} · {{ r.company }}</option>{% endfor %}
-      </select>
-    </label>
     <label>Search<input name="q" value="{{ q }}" placeholder="company or submission ID"></label>
     <button class="secondary">Apply</button>
   </form>
@@ -74,7 +67,7 @@
 
 <details class="card"><summary>Waiting on the vendor ({{ waiting|length }})</summary>
   <p class="muted">The vendor fixes these and resubmits from the Onboard vendor page; the earlier submission is then marked replaced. Where a reviewer asked for more information, you can still open it and decide if the vendor never answers.</p>
-  {% if waiting %}<table><thead><tr><th>Submission ID</th><th>Submitted</th><th>Company</th><th>Status</th><th>What to fix</th></tr></thead>
+  {% if waiting %}<table><thead><tr><th>Submission ID</th><th>Submitted at</th><th>Company</th><th>Status</th><th>What to fix</th></tr></thead>
     <tbody>{% for r in waiting %}<tr><td>{% if r in info_waiting %}<a href="{{ url_for('review_page', run=r.run_id, **args) }}">{{ r.run_id }}</a>{% else %}{{ r.run_id }}{% endif %}</td><td>{{ r.ts.replace('T', ' ') }}</td><td>{{ r.company }}</td><td>{{ r.final_sub }}</td><td>{{ reasons(r) }}</td></tr>{% endfor %}</tbody></table>
   {% else %}<p class="muted">None.</p>{% endif %}
 </details>

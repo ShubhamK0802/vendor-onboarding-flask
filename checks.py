@@ -29,7 +29,7 @@ def label(slot):
 def check_completeness(submission):
     required = REQUIRED_FIELDS + REQUIRED_BY_COUNTRY.get(normalize_id(submission.get("country")), [])
     return make_result("completeness", [
-        make_finding("MISSING_FIELD", FIX, f"Missing required field: {label(f)}")
+        make_finding("MISSING_FIELD", FIX, f"Enter your {label(f)}")
         for f in required if clean_value(submission.get(f)) is None
     ])
 
@@ -66,12 +66,12 @@ def gstin_check_char(first14):
 
 def gstin_checksum(value):
     if value[14] != gstin_check_char(value[:14]):
-        return "BAD_GSTIN_CHECKSUM", "GSTIN check character does not match; please re-check for a typo"
+        return "BAD_GSTIN_CHECKSUM", "GSTIN check character is wrong: re-check it"
 
 
 def routing_checksum(value):
     if sum(int(d) * w for d, w in zip(value, ROUTING_WEIGHTS)) % 10:
-        return "BAD_ROUTING_CHECKSUM", "Routing number check failed; please re-check for a typo"
+        return "BAD_ROUTING_CHECKSUM", "Routing number check failed: re-check it"
 
 
 def german_vat_check_digit(base8):
@@ -85,30 +85,27 @@ def german_vat_check_digit(base8):
 
 def german_vat_checksum(value):
     if int(value[-1]) != german_vat_check_digit(value[2:-1]):
-        return "BAD_VAT_CHECKSUM", "The VAT ID's check digit does not match; please re-check for a typo"
+        return "BAD_VAT_CHECKSUM", "VAT ID check digit is wrong: re-check it"
 
 
 def iban_checksum(value):
     """ISO 13616 mod-97, shared by every IBAN country; a German IBAN is also exactly 22 characters."""
     if value.startswith("DE") and len(value) != 22:
-        return "BAD_IBAN_FORMAT", f"A German IBAN has 22 characters; this one has {len(value)}"
+        return "BAD_IBAN_FORMAT", f"A German IBAN has 22 characters, yours has {len(value)}"
     if int("".join(str(int(ch, 36)) for ch in value[4:] + value[:4])) % 97 != 1:
-        return "BAD_IBAN_CHECKSUM", "The IBAN's checksum does not match; please re-check for a typo"
+        return "BAD_IBAN_CHECKSUM", "IBAN checksum is wrong: re-check it"
 
 
 Rule = namedtuple("Rule", "country field pattern code message extra", defaults=(None,))
 FORMATS = [
-    Rule("IN", "pan", re.compile(r"[A-Z]{5}[0-9]{4}[A-Z]"), "BAD_PAN_FORMAT",
-         "PAN must be 5 letters, 4 digits, 1 letter (example: ABCDE1234F)"),
-    Rule("IN", "tax_id", GSTIN_PATTERN, "BAD_GSTIN_FORMAT",
-         "GSTIN must be 15 characters: 2-digit state code, 10-character PAN, then 3 more characters (14th is Z)", gstin_checksum),
-    Rule("US", "tax_id", EIN_PATTERN, "BAD_EIN_FORMAT", "EIN must be 9 digits (example: 12-3456789)"),
-    Rule("IN", "bank_code", re.compile(r"[A-Z]{4}0[A-Z0-9]{6}"), "BAD_IFSC_FORMAT",
-         "IFSC must be 11 characters: 4 letters, the digit 0, then 6 letters or digits (example: HDFC0001234)"),
+    Rule("IN", "pan", re.compile(r"[A-Z]{5}[0-9]{4}[A-Z]"), "BAD_PAN_FORMAT", "PAN must look like ABCDE1234F"),
+    Rule("IN", "tax_id", GSTIN_PATTERN, "BAD_GSTIN_FORMAT", "GSTIN must be 15 characters (example 29ABCDE1234F1Z5)", gstin_checksum),
+    Rule("US", "tax_id", EIN_PATTERN, "BAD_EIN_FORMAT", "EIN must be 9 digits (example 12-3456789)"),
+    Rule("IN", "bank_code", re.compile(r"[A-Z]{4}0[A-Z0-9]{6}"), "BAD_IFSC_FORMAT", "IFSC must look like HDFC0001234"),
     Rule("US", "bank_code", EIN_PATTERN, "BAD_ROUTING_FORMAT", "Routing number must be 9 digits", routing_checksum),
-    Rule("DE", "tax_id", VAT_DE_PATTERN, "BAD_VAT_FORMAT", "German VAT ID (USt-IdNr) must be DE followed by 9 digits (example: DE123456788)", german_vat_checksum),
-    Rule("DE", "bank_account_number", IBAN_PATTERN, "BAD_IBAN_FORMAT", "The account must be an IBAN: 2 letters, 2 check digits, then the account number", iban_checksum),
-    Rule("DE", "bank_code", BIC_PATTERN, "BAD_BIC_FORMAT", "BIC / SWIFT code must be 8 or 11 characters (example: COBADEFFXXX)"),
+    Rule("DE", "tax_id", VAT_DE_PATTERN, "BAD_VAT_FORMAT", "German VAT ID must be DE plus 9 digits", german_vat_checksum),
+    Rule("DE", "bank_account_number", IBAN_PATTERN, "BAD_IBAN_FORMAT", "Enter the account as an IBAN", iban_checksum),
+    Rule("DE", "bank_code", BIC_PATTERN, "BAD_BIC_FORMAT", "BIC must be 8 or 11 characters (example COBADEFFXXX)"),
 ]
 ZERO_DROPPED = ("BAD_EIN_FORMAT", "BAD_ROUTING_FORMAT")  # Excel often drops a leading zero
 
@@ -120,13 +117,13 @@ def check_formats(submission):
         if rule.country != country or value is None:
             continue
         if not rule.pattern.fullmatch(value):
-            hint = ". It has 8 digits; a leading zero may have been dropped" if rule.code in ZERO_DROPPED and value.isdigit() and len(value) == 8 else ""
+            hint = " (8 digits: a leading zero may be missing)" if rule.code in ZERO_DROPPED and value.isdigit() and len(value) == 8 else ""
             findings.append(make_finding(rule.code, FIX, rule.message + hint))
         elif rule.extra and (bad := rule.extra(value)):
             findings.append(make_finding(bad[0], FIX, bad[1]))
     email = clean_value(submission.get("email"))
     if email and not EMAIL_PATTERN.fullmatch(email):
-        findings.append(make_finding("BAD_EMAIL_FORMAT", FIX, "Email address looks invalid (example: name@company.com)"))
+        findings.append(make_finding("BAD_EMAIL_FORMAT", FIX, "Enter a valid email address"))
     return make_result("format_checks", findings)
 
 
@@ -135,22 +132,22 @@ def check_formats(submission):
 def check_documents(submission):
     documents = submission.get("documents")
     documents = documents if isinstance(documents, dict) else {}
-    findings = [make_finding("MISSING_DOCUMENT", FIX, f"Missing document: {label(slot)}") for slot in REQUIRED_DOCS if not documents.get(slot)]
+    findings = [make_finding("MISSING_DOCUMENT", FIX, f"Upload the {label(slot)}") for slot in REQUIRED_DOCS if not documents.get(slot)]
     if not any(documents.get(slot) for slot in BANK_PROOF_DOCS):
-        findings.append(make_finding("MISSING_BANK_PROOF", FIX, "Missing bank proof: upload a voided cheque or a passbook page"))
+        findings.append(make_finding("MISSING_BANK_PROOF", FIX, "Upload a voided cheque or passbook page"))
     for slot, doc in documents.items():
         if not doc:
             continue
         if not isinstance(doc, dict):
-            findings.append(make_finding("MALFORMED_DOCUMENT", FIX, f"{label(slot)}: document details are unreadable; please upload again"))
+            findings.append(make_finding("MALFORMED_DOCUMENT", FIX, f"Upload the {label(slot)} again (unreadable)"))
             continue
         file_type = str(doc.get("file_type", "")).lower().lstrip(".")
         if file_type not in ALLOWED_FILE_TYPES:
-            findings.append(make_finding("BAD_FILE_TYPE", FIX, f"{label(slot)}: file type '{file_type}' is not allowed; upload a PDF, PNG or JPG"))
+            findings.append(make_finding("BAD_FILE_TYPE", FIX, f"{label(slot).capitalize()} must be a PDF, PNG or JPG"))
         if not doc.get("size_bytes"):
-            findings.append(make_finding("EMPTY_FILE", FIX, f"{label(slot)}: file is empty; please upload again"))
+            findings.append(make_finding("EMPTY_FILE", FIX, f"{label(slot).capitalize()} file is empty: upload it again"))
         if doc.get("declared_type") != slot:
-            findings.append(make_finding("WRONG_SLOT", FIX, f"{label(slot)}: this file is marked as '{doc.get('declared_type')}', which does not match this slot"))
+            findings.append(make_finding("WRONG_SLOT", FIX, f"The {label(slot)} is the wrong document type: upload the right one"))
     return make_result("documents", findings)
 
 
@@ -164,13 +161,13 @@ def check_identity(submission):
     pan, entity = normalize_id(submission.get("pan")), clean_value(submission.get("entity_type"))
     findings = []
     if country == "IN" and tax_id and pan and len(tax_id) == 15 and tax_id[2:12] != pan:
-        findings.append(make_finding("GSTIN_PAN_MISMATCH", RED, "The PAN inside the GSTIN does not match the PAN provided"))
+        findings.append(make_finding("GSTIN_PAN_MISMATCH", RED, "The PAN inside your GSTIN differs from the PAN you gave"))
     allowed = PAN_HOLDER_CODES.get((entity or "").lower().replace(" ", "_"))
     if country == "IN" and pan and len(pan) == 10 and allowed and pan[3] not in allowed:
-        findings.append(make_finding("PAN_ENTITY_MISMATCH", RED, f"The PAN's 4th character '{pan[3]}' does not fit the entity type '{entity}'"))
+        findings.append(make_finding("PAN_ENTITY_MISMATCH", RED, "Your PAN type does not fit your entity type"))
     for other, (pattern, kind) in TAX_ID_KINDS.items():  # a tax ID that is valid in ANOTHER supported country contradicts the claimed country
         if country in SUPPORTED_COUNTRIES and tax_id and other != country and pattern.fullmatch(tax_id):
-            findings.append(make_finding("ID_COUNTRY_MISMATCH", RED, f"The tax ID looks like {kind}, but the country is {country}"))
+            findings.append(make_finding("ID_COUNTRY_MISMATCH", RED, f"The tax ID looks like {kind}: check the country"))
             break
     iban = normalize_id(submission.get("bank_account_number"))
     if country == "DE" and iban and IBAN_PATTERN.fullmatch(iban) and iban[:2] != "DE":  # bank country is advisory: a company can bank abroad, but a human confirms
@@ -197,8 +194,7 @@ def check_name_match(submission):
     full_company, full_holder = normalize_name(submission["company_name"]), normalize_name(submission["bank_account_name"])
     if company == holder:
         if legal_forms(full_company) != legal_forms(full_holder):
-            return make_result("name_match", [make_finding("LEGAL_FORM_DIFFERENCE", FIX,
-                "The bank account holder and your company name differ in legal form (for example LLP vs Private Limited). Please correct whichever is wrong so they match.")])
+            return make_result("name_match", [make_finding("LEGAL_FORM_DIFFERENCE", FIX, "Account holder and company differ in legal form (e.g. LLP vs Pvt Ltd): make them match")])
         if full_company == full_holder:
             return make_result("name_match", [])
         note = "Names match; only the suffix spelling differs"
@@ -208,13 +204,11 @@ def check_name_match(submission):
         return make_result("name_match", [], note=note)
     score = fuzz.token_sort_ratio(company, holder)
     if score >= NAME_REVIEW_THRESHOLD:  # a typo, or a lookalike name (a known fraud tactic): the vendor corrects it once; the same finding twice rejects
-        return make_result("name_match", [make_finding("NAME_NEAR_MISS", FIX,
-            f"The bank account holder name is similar to, but not exactly, your company name ({score:.0f}% alike). Please correct whichever is wrong so they match exactly.")])
+        return make_result("name_match", [make_finding("NAME_NEAR_MISS", FIX, "Make the account holder name match your company name exactly")])
     if (clean_value(submission.get("entity_type")) or "").lower().replace(" ", "_") == "sole_proprietor":
         return make_result("name_match", [make_finding("SOLE_PROP_NAME_REVIEW", REVIEW,
             "Account holder name differs from the business name; for a sole proprietor this can be the owner's own name, so a reviewer will confirm")])
-    return make_result("name_match", [make_finding("NAME_MISMATCH", RED,
-        "The bank account must be in your company's legal name. Please give an account in that name, or attach a signed letter authorising payment to the account holder.")])
+    return make_result("name_match", [make_finding("NAME_MISMATCH", RED, "Use a bank account in your company's name, or attach a signed authorisation letter")])
 
 
 # ---- 7. duplicates ------------------------------------------------------------------------------

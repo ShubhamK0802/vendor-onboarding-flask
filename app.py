@@ -217,7 +217,7 @@ def reviewable(run):
 
 
 def back_args(source):
-    return {k: source[k] for k in ("sort", "priority", "q") if source.get(k)}
+    return {k: source[k] for k in ("sort", "q") if source.get(k)}
 
 
 @app.get("/review")
@@ -227,15 +227,15 @@ def review_page():
     for seq, r in enumerate(runs):
         r.update(seq=seq, priority=priority(r), why_priority=priority_why(r), age=age(r), claimed_by=held.get(r["run_id"], {}).get("reviewer"))
     sort = request.args.get("sort") if request.args.get("sort") in SORTS else "priority"
-    level, text = request.args.get("priority", "All"), request.args.get("q", "").strip().lower()
+    text = request.args.get("q", "").strip().lower()
     everyone = [r for r in runs if r["waiting_on"] == "Reviewer"]
-    queue = sorted([r for r in everyone if level in ("All", r["priority"]) and text in f"{r['company']} {r['run_id']}".lower()],
+    queue = sorted([r for r in everyone if text in f"{r['company']} {r['run_id']}".lower()],
                    key=SORT_KEYS[sort])
     info_waiting = [r for r in runs if reviewable(r) and r["waiting_on"] == "Vendor"]
     picked = next((r for r in queue + info_waiting if r["run_id"] == request.args.get("run")), queue[0] if queue else None)
     return render_template("review.html", queue=queue, everyone=everyone, n_high=sum(r["priority"] == "High" for r in everyone), picked=picked,
                            info_waiting=info_waiting, waiting=[r for r in runs if r["waiting_on"] == "Vendor"], decisions=list(reversed(store.load_decisions())),
-                           sorts=SORTS, sort=sort, level=level, q=request.args.get("q", ""), args={"sort": sort, "priority": level, "q": request.args.get("q", "")})
+                           sorts=SORTS, sort=sort, q=request.args.get("q", ""), args={"sort": sort, "q": request.args.get("q", "")})
 
 
 @app.post("/review/<run_id>/claim")

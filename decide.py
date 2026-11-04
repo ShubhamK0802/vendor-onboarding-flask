@@ -9,18 +9,16 @@ from config import ESCALATE_TO_REVIEW, FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN
 
 def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
     if status == "Approved":
-        return "Your vendor application is approved."
-    if status == "Rejected" and reject_reasons:
-        return "We are unable to approve this application because " + " and ".join(reject_reasons) + ". If this was a mistake, please submit a new application or contact our support team."
+        return "Approved."
     if status == "Rejected":
-        return "We are unable to approve this application. Please contact our support team."
-    if sub_status == NEEDS_REVIEW:
-        message = "Your application is under review by our team. We will contact you if we need anything."
-    else:
-        message = "We need a few changes before we can approve your application."
-    if fixes:
-        message += " Please fix: " + "; ".join(fixes) + "."
-    return message
+        if reject_reasons:
+            return "Not approved: " + "; ".join(reject_reasons) + ". If this was a mistake, submit a new application."
+        return "Not approved. Please contact support."
+    head = "Under review. We will contact you if we need anything." if sub_status == NEEDS_REVIEW else ""
+    if not fixes:
+        return head
+    todo = f"Please fix: {fixes[0]}" if len(fixes) == 1 else "Please fix:\n" + "\n".join(f"{i}. {fix}" for i, fix in enumerate(fixes, 1))
+    return f"{head}\n{todo}" if head else todo
 
 
 def decide(stage_results, previous=()):
@@ -35,7 +33,7 @@ def decide(stage_results, previous=()):
     stuck = [f for f in unresolved if f["code"] not in ESCALATE_TO_REVIEW]
     reject_reasons = [REJECT_ON_ITS_OWN[f["code"]] for f in findings if f["code"] in REJECT_ON_ITS_OWN]
     if stuck:
-        reject_reasons.append("these were still not fixed after your resubmission: " + "; ".join(f["message"] for f in stuck))
+        reject_reasons.append("not fixed after resubmission: " + "; ".join(f["message"] for f in stuck))
 
     if not findings:
         status, sub_status = "Approved", None

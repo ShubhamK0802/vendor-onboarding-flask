@@ -1,5 +1,5 @@
 """All persistence in one SQLite file (stdlib). Raw submissions stay in the DB; everything shown in the UI is masked."""
-import hashlib
+import uuid
 import json
 import sqlite3
 from contextlib import closing
@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, 
     rule_version TEXT, seconds REAL, decision TEXT, payload TEXT, snapshot TEXT, parent_id TEXT);
 CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY, run_id TEXT, decision TEXT, note TEXT, reviewer TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS docs(run_id TEXT, slot TEXT, filename TEXT, data BLOB);
+CREATE TABLE IF NOT EXISTS vendor_ids(company_key TEXT PRIMARY KEY, vendor_id TEXT);
 CREATE TABLE IF NOT EXISTS claims(run_id TEXT PRIMARY KEY, reviewer TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS vendors(company_key TEXT, company_name TEXT, bank_account_number TEXT, mobile TEXT, email TEXT, address TEXT);
 """
@@ -50,18 +51,15 @@ def make_snapshot(submission):
 
 def save_run(submission, decision, seconds, parent_id=None, files=None):
     """files: {slot: (filename, bytes)} - the uploaded documents, kept so a reviewer can open them."""
-    for _ in range(10):  # two submissions at the same moment can pick the same number: the loser takes the next one
-        try:
-            with closing(connect()) as conn, conn:
-                run_id = f"S-{conn.execute('SELECT COALESCE(MAX(CAST(SUBSTR(run_id, 3) AS INTEGER)), 0) + 1 FROM runs').fetchone()[0]:04d}"
-                conn.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
-                    run_id, now(), submission.get("company_name"), submission.get("country"), decision["status"], decision["sub_status"],
-                    decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
-                conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
-            return run_id
-        except sqlite3.IntegrityError:
-            continue
-    raise RuntimeError("could not allocate a submission ID")
+    run_id, key = uuid.uuid4().hex[:8], company_key(submission)  # random, so nobody can guess another submission's ID
+    with closing(connect()) as conn, conn:
+        conn.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
+            run_id, now(), submission.get("company_name"), submission.get("country"), decision["status"], decision["sub_status"],
+            decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
+        conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
+        if key:  # one random vendor ID per company, the same for all its submissions
+            conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (key, "V-" + uuid.uuid4().hex[:6].upper()))
+    return run_id
 
 
 def save_decision(run_id, decision, note, reviewer):
@@ -103,7 +101,7 @@ def get_docs(run_id, with_data=True):
 def reset():
     """Demo only (a real audit trail is never deletable): clears every run and decision, and restores the vendors on file."""
     with closing(connect()) as conn, conn:
-        for table in ("runs", "decisions", "docs", "vendors", "claims"):
+        for table in ("runs", "decisions", "docs", "vendors", "claims", "vendor_ids"):
             conn.execute(f"DELETE FROM {table}")
 
 
@@ -125,20 +123,15 @@ def final_state(run):
     return state
 
 
-def vendor_id(payload):
-    """One ID per company, the same for every submission it ever makes: derived from the company's tax identity (PAN, EIN or VAT ID)."""
-    key = company_key(payload)
-    return "V-" + hashlib.sha1(key.encode()).hexdigest()[:6].upper() if key else ""
-
-
 def load_runs():
     """Oldest first. Each run carries its parsed decision, latest reviewer decision, and final state."""
     runs = query("SELECT * FROM runs ORDER BY ts, rowid")
     latest = {d["run_id"]: d for d in load_decisions()}
     child = {r["parent_id"]: r["run_id"] for r in runs if r["parent_id"]}
+    vendor_ids = {v["company_key"]: v["vendor_id"] for v in query("SELECT * FROM vendor_ids")}
     for run in runs:
         run.update(decision=json.loads(run["decision"]), payload=json.loads(run["payload"]), snapshot=json.loads(run["snapshot"]))
-        run["vendor_id"] = vendor_id(run["payload"])
+        run["vendor_id"] = vendor_ids.get(company_key(run["payload"]), "")
         run["findings"] = run["decision"].get("findings", [])
         run["codes"] = [f["code"] for f in run["findings"]]
         run.update(decision_by=latest.get(run["run_id"]), superseded_by=child.get(run["run_id"]))

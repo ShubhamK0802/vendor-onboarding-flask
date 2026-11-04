@@ -136,6 +136,6 @@ VENDOR_TO_FIX = "Vendor to fix"
 #   3. the same problem still there after the vendor was asked to fix it (a resubmission repeating a finding);
 #   4. the vendor not answering within FIX_DEADLINE_DAYS (the run closes by itself);
 #   5. a reviewer's decision.
-REJECT_ON_ITS_OWN = {"DUPLICATE_APPLICATION": "your company is already onboarded with exactly these details, so there is nothing more to do"}
+REJECT_ON_ITS_OWN = {"DUPLICATE_APPLICATION": "your company is already onboarded with exactly these details"}
 ESCALATE_TO_REVIEW = {"NAME_MISMATCH"}  # if the vendor repeats these, a person reads their explanation (for example a letter of authorisation)
 FIX_DEADLINE_DAYS = 7

@@ -32,7 +32,7 @@
     </label>
   </form>
   <table>
-    <thead><tr><th>Submitted</th><th>Submission ID</th><th>Vendor ID</th><th>Company</th><th>Country</th><th>Status now</th><th>Automatic verdict</th><th>Decided by</th></tr></thead>
+    <thead><tr><th>Submitted at</th><th>Submission ID</th><th>Vendor ID</th><th>Company</th><th>Country</th><th>Status now</th><th>Automatic verdict</th><th>Decided by</th></tr></thead>
     <tbody>
       {% for r in history %}
       <tr class="{{ 'sel' if picked and r.run_id == picked.run_id }}">

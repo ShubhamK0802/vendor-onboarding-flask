@@ -61,7 +61,7 @@ check(data is None and error, "11_malformed_json", f"-> {error}")
 check(store.load_runs() == [] and len(store.known_vendors([])) == 1, "history starts empty; only the vendors on file are known")
 
 first = submit(INDIA)
-check(first == "S-0001" and run(first)["vendor_id"].startswith("V-") and len(run(first)["vendor_id"]) == 8, "submission IDs are sequential (S-0001) and vendors get a V- ID")
+check(len(first) == 8 and first != run(submit(INDIA))["run_id"] and not first.startswith("S-") and run(first)["vendor_id"].startswith("V-") and len(run(first)["vendor_id"]) == 8, "submission IDs are random 8-character codes, not a guessable sequence, and vendors get a V- ID")
 check(run(first)["final"] == "Approved", "clean vendor is approved")
 again = submit(INDIA)
 check(run(again)["final"] == "Rejected" and "DUPLICATE_APPLICATION" in run(again)["codes"] and "exactly these details" in run(again)["decision"]["vendor_message"],
@@ -95,6 +95,12 @@ check(store.mask_account("50100234567891") == "****7891" and "50100234567891" no
 quartz = fresh(copy.deepcopy(INDIA), "Quartz Mills Private Limited", "QUACM2345Q", "79000123456709")
 outcome = lambda d, prev=(): (lambda r: (r["status"], r["sub_status"]))(run_pipeline(d, [], prev))
 check(outcome(quartz) == ("Approved", None), "status definitions: a vendor with nothing wrong is approved")
+
+# ---- the vendor message is short and to the point
+two = run_pipeline(dict(quartz, bank_account_name="Zenith Traders", documents=dict(quartz["documents"], voided_cheque=None)), [])["vendor_message"]
+check(two == "Please fix:\n1. Upload a voided cheque or passbook page\n2. Use a bank account in your company's name, or attach a signed authorisation letter" and len(two) < 150, "vendor message: two fixes are a short numbered list")
+check(run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"].startswith("Please fix:"), "vendor message: starts with what to do")
+
 check(outcome(dict(quartz, tax_id="123456789")) == ("Pending", "Vendor to fix"), "status definitions: one contradiction alone (tax ID of another country) is a mistake the vendor can fix")
 check(outcome(dict(quartz, pan="ZZZZZ9999Z")) == ("Rejected", None), "status definitions: two contradictions at once are rejected")
 near_miss = dict(quartz, bank_account_name="Quartz Mill Private Limited")
@@ -102,7 +108,7 @@ first_try = run_pipeline(near_miss, [])
 check((first_try["status"], first_try["sub_status"]) == ("Pending", "Vendor to fix"), "status definitions: a near-miss name is first a vendor fix")
 asked = [(f["code"], f["message"]) for f in first_try["findings"]]
 second_try = run_pipeline(near_miss, [], asked)
-check(second_try["status"] == "Rejected" and "still not fixed" in second_try["vendor_message"], "status definitions: the same finding after being asked to fix it rejects")
+check(second_try["status"] == "Rejected" and "not fixed after resubmission" in second_try["vendor_message"], "status definitions: the same finding after being asked to fix it rejects")
 check(outcome(quartz, asked) == ("Approved", None), "status definitions: a vendor who really fixes it is approved")
 mismatch = dict(quartz, bank_account_name="Zenith Traders")
 asked = [(f["code"], f["message"]) for f in run_pipeline(mismatch, [])["findings"]]
@@ -161,9 +167,9 @@ check(b"No submissions yet" in client.get("/dashboard").data, "web: reset emptie
 
 # a near-miss name: the vendor corrects it once; the same finding on the resubmission rejects
 first = run_web(mode="sample", sample="06_near_miss_name.json")["run_id"]
-check(next(r for r in store.load_runs() if r["run_id"] == first)["final"] == "Pending" and b"similar to, but not exactly" in client.get(f"/run/{first}").data, "web: a near-miss name is first sent back to the vendor to fix")
+check(next(r for r in store.load_runs() if r["run_id"] == first)["final"] == "Pending" and b"match your company name exactly" in client.get(f"/run/{first}").data, "web: a near-miss name is first sent back to the vendor to fix")
 again = run_web(mode="sample", sample="06_near_miss_name.json", parent=first)["run_id"]
-check(next(r for r in store.load_runs() if r["run_id"] == again)["final"] == "Rejected" and b"still not fixed after your resubmission" in client.get(f"/run/{again}").data, "web: the same near-miss on the resubmission is rejected, and the vendor is told why")
+check(next(r for r in store.load_runs() if r["run_id"] == again)["final"] == "Rejected" and b"not fixed after resubmission" in client.get(f"/run/{again}").data, "web: the same near-miss on the resubmission is rejected, and the vendor is told why")
 
 # ---- reviewer desk: order, filters, taking a submission, next-up, info-requested runs ----
 contact = run_web(mode="sample", sample="15_shared_contact.json")["run_id"]  # normal priority, submitted first
@@ -179,7 +185,7 @@ def rows(html):
 order = lambda url: [rid for _, rid in rows(client.get(url).data)]
 check(order("/review") == [clash, contact, near], "reviewer desk: default order puts the high-priority run first, then oldest")
 check(order("/review?sort=oldest") == [contact, clash, near] and order("/review?sort=newest") == [near, clash, contact], "reviewer desk: oldest-first and newest-first orders")
-check(order("/review?priority=High") == [clash] and order("/review?q=quill") == [contact], "reviewer desk: filter by priority and search by company")
+check(order("/review?q=quill") == [contact] and order("/review?q=harbor") == [clash], "reviewer desk: search by company")
 check(b"Being handled by" not in client.get(f"/review?run={contact}").data, "reviewer desk: nothing is taken at first")
 
 client.post(f"/review/{contact}/claim", data={"reviewer": "Asha"})

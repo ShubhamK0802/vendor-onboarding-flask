@@ -47,6 +47,55 @@ def check_country(submission):
     return make_result("country_routing", [])
 
 
+# ---- look-alike characters: O for 0, I or l for 1, letters of another alphabet, invisible characters ----------
+# Names are only ever compared WITH EACH OTHER, so honest names with digits (34square, add360) are never flagged:
+# a pair is only suspicious when the two spellings differ but become identical once look-alikes are folded together.
+TO_DIGIT = {"O": "0", "I": "1", "L": "1", "S": "5", "B": "8", "Z": "2", "G": "6"}  # letters that look like a digit
+TO_LETTER = {"0": "O", "1": "IL", "5": "S", "8": "B", "2": "Z", "6": "G"}  # digits that look like a letter
+FOLD = str.maketrans({"0": "o", "O": "o", "1": "l", "I": "l", "5": "s", "8": "b", "2": "z", "6": "g"})
+
+
+def hidden_characters(text):
+    return any(unicodedata.category(ch) in ("Cf", "Cc") for ch in text)
+
+
+def mixed_alphabets(text):
+    """A word that mixes Latin letters with letters of another alphabet (a Cyrillic 'a' inside 'Apex'): a classic spoofing trick."""
+    for word in text.split():
+        scripts = {unicodedata.name(ch, "").startswith("LATIN") for ch in word if ch.isalpha()}
+        if len(scripts) == 2:
+            return True
+    return False
+
+
+def lookalike_only(value, shape):
+    """True when the value breaks its shape ONLY through look-alike characters. Shape: D digit, L letter, A letter or digit, anything else must match;
+    "D*" means digits of any length. A value of the wrong length is a plain mistake, not a look-alike."""
+    slots = "D" * len(value) if shape == "D*" else shape
+    if len(value) != len(slots):
+        return False
+    swapped = False
+    for ch, slot in zip(value, slots):
+        if slot == "A":
+            if not (ch.isascii() and ch.isalnum()):
+                return False
+        elif (slot == "D" and ch.isascii() and ch.isdigit()) or (slot == "L" and ch.isascii() and ch.isalpha()) or ch == slot:
+            continue
+        elif (slot == "D" or slot.isdigit()) and TO_DIGIT.get(ch) in ("1", "2", "5", "6", "8", "0") and (slot == "D" or TO_DIGIT[ch] == slot):
+            swapped = True
+        elif (slot == "L" or slot.isalpha()) and slot != "A" and ch in TO_LETTER and (slot == "L" or slot in TO_LETTER[ch]):
+            swapped = True
+        else:
+            return False
+    return swapped
+
+
+def lookalike(first, second):
+    """Two names that differ only in look-alike characters (g00gle / google). Identical names, or names that differ in other ways, are not."""
+    a, b = core_name(first or ""), core_name(second or "")
+    return bool(a and b) and a != b and core_name(first.translate(FOLD)) == core_name(second.translate(FOLD))
+
+
 # ---- 3. format checks: one rule per (country, field). Adding a country = adding rows here -------
 
 GSTIN_PATTERN = re.compile(r"[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]")
@@ -93,20 +142,26 @@ def german_vat_checksum(value):
 
 def iban_checksum(value):
     """ISO 13616 mod-97, shared by every IBAN country; a German IBAN is also exactly 22 characters."""
+    if value.startswith("DE") and not value[2:].isdigit():
+        if all(ch.isdigit() or ch in TO_DIGIT for ch in value[2:]):
+            return "LOOKALIKE_CHARACTERS", "The IBAN contains characters that look like digits (for example O and 0)"
+        return "BAD_IBAN_FORMAT", "A German IBAN is DE plus 20 digits"
     if value.startswith("DE") and len(value) != 22:
         return "BAD_IBAN_FORMAT", f"A German IBAN has 22 characters, yours has {len(value)}"
     if int("".join(str(int(ch, 36)) for ch in value[4:] + value[:4])) % 97 != 1:
         return "BAD_IBAN_CHECKSUM", "IBAN checksum is wrong: re-check it"
 
 
-Rule = namedtuple("Rule", "country field pattern code message extra", defaults=(None,))
+Rule = namedtuple("Rule", "country field pattern code message extra shape", defaults=(None, None))
 FORMATS = [
-    Rule("IN", "pan", re.compile(r"[A-Z]{5}[0-9]{4}[A-Z]"), "BAD_PAN_FORMAT", "PAN must look like ABCDE1234F"),
-    Rule("IN", "tax_id", GSTIN_PATTERN, "BAD_GSTIN_FORMAT", "GSTIN must be 15 characters (example 29ABCDE1234F1Z5)", gstin_checksum),
-    Rule("US", "tax_id", EIN_PATTERN, "BAD_EIN_FORMAT", "EIN must be 9 digits (example 12-3456789)"),
-    Rule("IN", "bank_code", re.compile(r"[A-Z]{4}0[A-Z0-9]{6}"), "BAD_IFSC_FORMAT", "IFSC must look like HDFC0001234"),
-    Rule("US", "bank_code", EIN_PATTERN, "BAD_ROUTING_FORMAT", "Routing number must be 9 digits", routing_checksum),
-    Rule("DE", "tax_id", VAT_DE_PATTERN, "BAD_VAT_FORMAT", "German VAT ID must be DE plus 9 digits", german_vat_checksum),
+    Rule("IN", "pan", re.compile(r"[A-Z]{5}[0-9]{4}[A-Z]"), "BAD_PAN_FORMAT", "PAN must look like ABCDE1234F", None, "LLLLLDDDDL"),
+    Rule("IN", "tax_id", GSTIN_PATTERN, "BAD_GSTIN_FORMAT", "GSTIN must be 15 characters (example 29ABCDE1234F1Z5)", gstin_checksum, "DDLLLLLDDDDLAZA"),
+    Rule("US", "tax_id", EIN_PATTERN, "BAD_EIN_FORMAT", "EIN must be 9 digits (example 12-3456789)", None, "DDDDDDDDD"),
+    Rule("IN", "bank_code", re.compile(r"[A-Z]{4}0[A-Z0-9]{6}"), "BAD_IFSC_FORMAT", "IFSC must look like HDFC0001234", None, "LLLL0AAAAAA"),
+    Rule("US", "bank_code", EIN_PATTERN, "BAD_ROUTING_FORMAT", "Routing number must be 9 digits", routing_checksum, "DDDDDDDDD"),
+    Rule("IN", "bank_account_number", re.compile(r"[0-9]{9,18}"), "BAD_ACCOUNT_FORMAT", "Bank account number must be 9 to 18 digits", None, "D*"),
+    Rule("US", "bank_account_number", re.compile(r"[0-9]{4,17}"), "BAD_ACCOUNT_FORMAT", "Bank account number must be 4 to 17 digits", None, "D*"),
+    Rule("DE", "tax_id", VAT_DE_PATTERN, "BAD_VAT_FORMAT", "German VAT ID must be DE plus 9 digits", german_vat_checksum, "DEDDDDDDDDD"),
     Rule("DE", "bank_account_number", IBAN_PATTERN, "BAD_IBAN_FORMAT", "Enter the account as an IBAN", iban_checksum),
     Rule("DE", "bank_code", BIC_PATTERN, "BAD_BIC_FORMAT", "BIC must be 8 or 11 characters (example COBADEFFXXX)"),
 ]
@@ -114,12 +169,20 @@ ZERO_DROPPED = ("BAD_EIN_FORMAT", "BAD_ROUTING_FORMAT")  # Excel often drops a l
 
 
 def check_formats(submission):
-    country, findings = normalize_id(submission.get("country")), []
+    country, findings, flagged = normalize_id(submission.get("country")), [], set()
+    for field in ("tax_id", "pan", "bank_account_number", "bank_code"):  # an ID with invisible or non-ASCII characters is never an honest typo
+        raw = str(submission.get(field) or "")
+        if hidden_characters(raw) or not raw.isascii():
+            findings.append(make_finding("HIDDEN_CHARACTERS", REVIEW, f"The {label(field)} contains hidden or non-ASCII characters"))
+            flagged.add(field)
     for rule in FORMATS:
         value = normalize_id(submission.get(rule.field))
-        if rule.country != country or value is None:
+        if rule.country != country or value is None or rule.field in flagged:
             continue
         if not rule.pattern.fullmatch(value):
+            if rule.shape and lookalike_only(value, rule.shape):
+                findings.append(make_finding("LOOKALIKE_CHARACTERS", REVIEW, f"The {label(rule.field)} contains characters that look like other letters or digits (for example O and 0)"))
+                continue
             hint = " (8 digits: a leading zero may be missing)" if rule.code in ZERO_DROPPED and value.isdigit() and len(value) == 8 else ""
             findings.append(make_finding(rule.code, FIX, rule.message + hint))
         elif rule.extra and (bad := rule.extra(value)):
@@ -192,8 +255,12 @@ def check_name_match(submission):
     company, holder = core_name(submission.get("company_name")), core_name(submission.get("bank_account_name"))
     if not company or not holder:
         return make_result("name_match", [], skipped_reason="Company name or account holder name missing; see completeness")
+    if any(hidden_characters(text) or mixed_alphabets(text) for text in (submission["company_name"], submission["bank_account_name"])):
+        return make_result("name_match", [make_finding("HIDDEN_CHARACTERS", REVIEW, "A name contains hidden characters, or mixes alphabets inside one word")])
     if non_latin(submission["company_name"]) or non_latin(submission["bank_account_name"]):  # e.g. kanji vs katakana: not comparable by spelling
         return make_result("name_match", [make_finding("NAME_NON_LATIN", REVIEW, "A name is not written in Latin letters, so it cannot be compared reliably; a reviewer will confirm")])
+    if lookalike(submission["company_name"], submission["bank_account_name"]):
+        return make_result("name_match", [make_finding("LOOKALIKE_NAME", REVIEW, "The company name and the account holder differ only in look-alike characters (for example 0 for o)")])
     full_company, full_holder = normalize_name(submission["company_name"]), normalize_name(submission["bank_account_name"])
     if company == holder:
         if legal_forms(full_company) != legal_forms(full_holder):
@@ -273,6 +340,8 @@ def check_verification(submission):
             notes.append("no registry record (demo registry): not checked")
         elif record.get("status") != "active":
             findings.append(make_finding("REGISTRY_CANCELLED", REVIEW, "The tax registration is cancelled or inactive"))
+        elif company and lookalike(company, record.get("name")):
+            findings.append(make_finding("LOOKALIKE_NAME", REVIEW, "The company name differs from the tax registry only in look-alike characters"))
         elif core_name(record.get("name")) and company and fuzz.token_sort_ratio(core_name(record["name"]), core_name(company)) < 85:
             findings.append(make_finding("REGISTRY_NAME_MISMATCH", RED, "Your company name differs from the tax registry: use the registered legal name"))
 
@@ -280,7 +349,7 @@ def check_verification(submission):
     exact = near = False
     for listed in WATCHLIST.get("names", []):
         for name in names:
-            if core_name(name) == core_name(listed):
+            if core_name(name) == core_name(listed) or lookalike(name, listed):  # a look-alike spelling of a listed name is evasion, not a different company
                 exact = True
             elif fuzz.token_sort_ratio(core_name(name), core_name(listed)) >= 85:
                 near = True
@@ -331,6 +400,8 @@ def check_duplicates(submission, existing_vendors):
             if not changed:
                 found["DUPLICATE_APPLICATION"] = make_finding("DUPLICATE_APPLICATION", REVIEW, "This company is already onboarded with exactly these details")
             continue
+        if lookalike(submission.get("company_name"), vendor.get("company_name")):
+            found["LOOKALIKE_OF_EXISTING_VENDOR"] = make_finding("LOOKALIKE_OF_EXISTING_VENDOR", REVIEW, "The company name differs from an onboarded vendor's name only in look-alike characters")
         if account and normalize_id(vendor.get("bank_account_number")) == account:
             found["DUPLICATE_BANK_ACCOUNT"] = make_finding("DUPLICATE_BANK_ACCOUNT", REVIEW, "This bank account is already registered to a different company; a reviewer will confirm")
         if (mobile and normalize_id(vendor.get("mobile")) == mobile) or (email and (clean_value(vendor.get("email")) or "").lower() == email):

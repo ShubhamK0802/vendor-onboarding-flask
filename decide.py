@@ -32,6 +32,7 @@ def decide(stage_results, previous=()):
     escalated = [f for f in unresolved if f["code"] in ESCALATE_TO_REVIEW]
     stuck = [f for f in unresolved if f["code"] not in ESCALATE_TO_REVIEW]
     reject_reasons = [REJECT_ON_ITS_OWN[f["code"]] for f in findings if f["code"] in REJECT_ON_ITS_OWN]
+    reject_reasons = list(dict.fromkeys(reject_reasons))
     if stuck:
         reject_reasons.append("these were not fixed after your resubmission: " + "; ".join(f["message"] for f in stuck))
 

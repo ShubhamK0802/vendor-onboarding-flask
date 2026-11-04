@@ -14,7 +14,7 @@ os.environ["MAIL_WORKER"] = "0"  # the background sender is driven by hand in th
 from decide import parse_submission, run_pipeline
 from datetime import datetime, timedelta
 
-from samples import CASES, SAMPLES, INDIA, american, fresh, make_iban, short_tax_id
+from samples import APEX, CASES, SAMPLES, INDIA, american, fresh, indian, make_iban, short_tax_id
 
 store.DB_PATH = os.path.join(tempfile.mkdtemp(), "test.db")
 failed = []
@@ -94,6 +94,38 @@ child = submit(bad, parent_id=pending, files={"tax_document": ("w9.pdf", b"%PDF-
 check(run(pending)["final"] == "Replaced" and run(pending)["superseded_by"] == child, "resubmission supersedes the earlier run")
 check(store.get_docs(child)[0]["data"] == b"%PDF-1.4 test", "uploaded document is stored and retrievable")
 check(store.mask_account("50100234567891") == "****7891" and "50100234567891" not in str(run(first)["snapshot"]), "account numbers are masked in what the UI reads")
+
+# ---- look-alike characters are rejected outright; honest digits in names are fine
+import checks as C  # noqa: E402
+
+shape = {r.code: r.shape for r in C.FORMATS if r.shape}
+verdict = lambda d, history=(): (lambda r: (r["status"], r["sub_status"], [f["code"] for f in r["findings"]], r["vendor_message"]))(run_pipeline(copy.deepcopy(d), list(history)))
+check(C.lookalike_only("29ABCCAI234D1Z6", shape["BAD_GSTIN_FORMAT"]) and C.lookalike_only("O21000021", shape["BAD_ROUTING_FORMAT"]) and C.lookalike_only("6O200345678912", "D*")
+      and not C.lookalike_only("29AB23I3l07", shape["BAD_GSTIN_FORMAT"]) and not C.lookalike_only("29ABCCA!234D1Z6", shape["BAD_GSTIN_FORMAT"]) and not C.lookalike_only("29ABCCA1234D1Z6", shape["BAD_GSTIN_FORMAT"]),
+      "look-alikes: swaps like I for 1 are recognised; a wrong length, a stray symbol or a valid ID are not look-alikes")
+check(C.lookalike("g00gle", "google") and C.lookalike("Google India Private Limited", "G00gle India Pvt Ltd")
+      and not C.lookalike("34square Private Limited", "34SQUARE PVT LTD") and not C.lookalike("add360", "ADD360") and not C.lookalike("Lumina Global", "Lumina Globe") and not C.lookalike("Apex Global Private Limited", "Apex Global Pvt Ltd"),
+      "look-alikes: g00gle and google are look-alikes; names with honest digits (34square, add360) and ordinary spelling differences are not")
+check(C.mixed_alphabets("\u0410pex Global") and not C.mixed_alphabets("\u0410\u043f\u0435\u043a\u0441 Global") and C.hidden_characters("29AB\u200bC") and not C.hidden_characters("29ABC"),
+      "look-alikes: a Cyrillic letter inside a Latin word and invisible characters are caught; a name wholly in another alphabet is left to a reviewer")
+
+google = indian("Google India Private Limited", "GOOCI1234G", "72000123456702")
+rejected = lambda d, code, history=(): (lambda v: v[0] == "Rejected" and code in v[2] and "rejected because" in v[3])(verdict(d, history))
+check(verdict(google)[:2] == ("Approved", None), "look-alikes: the control vendor is approved")
+check(rejected(dict(google, bank_account_name="G00gle India Private Limited"), "LOOKALIKE_NAME"), "look-alikes: a bank holder spelled g00gle against a company spelled google is rejected, not sent back")
+check(verdict(indian("34square Private Limited", "SQUCS1234S", "72000123456703", holder="34SQUARE PVT LTD"))[:2] == ("Approved", None)
+      and verdict(indian("add360 Private Limited", "ADDCA3601A", "72000123456704", holder="ADD360 PRIVATE LIMITED"))[:2] == ("Approved", None), "look-alikes: honest digits in names (34square, add360) are approved")
+check(rejected(indian("add360 Private Limited", "ADDCA3601A", "72000123456704", holder="add36O Private Limited"), "LOOKALIKE_NAME"), "look-alikes: add360 against add36O is rejected")
+check(rejected(dict(google, company_name="G\u043e\u043egle India Private Limited"), "HIDDEN_CHARACTERS"), "look-alikes: Cyrillic letters inside a Latin name are rejected")
+check(rejected(dict(INDIA, tax_id="29ABCCAI234D1Z6"), "LOOKALIKE_CHARACTERS"), "look-alikes: a GSTIN with I for 1 is rejected, not sent back")
+check(rejected(dict(INDIA, tax_id=INDIA["tax_id"][:5] + "\u200b" + INDIA["tax_id"][5:]), "HIDDEN_CHARACTERS")
+      and rejected(dict(INDIA, tax_id="".join(chr(ord(c) + 0xFEE0) if c.isdigit() else c for c in INDIA["tax_id"])), "HIDDEN_CHARACTERS"), "look-alikes: an invisible character or full-width digits in an ID are rejected")
+check(rejected(dict(google, bank_account_number="7200012345670O"), "LOOKALIKE_CHARACTERS") and rejected(dict(american("Redwood Supply LLC", "84-2736195", "4400555111"), bank_code="O21000021"), "LOOKALIKE_CHARACTERS"),
+      "look-alikes: a letter O in a bank account number or routing number is rejected, so it cannot dodge the duplicate-account check")
+check(verdict(dict(google, bank_account_number="12345"))[:3] == ("Pending", "Vendor to fix", ["BAD_ACCOUNT_FORMAT"]), "look-alikes: a bank account of the wrong length is an ordinary mistake, sent back to the vendor")
+check(rejected(indian("N0rthern Star Arms Trading Limited", "NORCN3459R", "72000123456705"), "SANCTIONS_MATCH"), "look-alikes: a look-alike spelling of a watchlist name does not escape the screening")
+check(rejected(indian("Apex G1obal Private Limited", "APXCG9876A", "73100123456703"), "LOOKALIKE_OF_EXISTING_VENDOR", history=[APEX]), "look-alikes: a name that looks like an onboarded vendor's is rejected")
+check(rejected(dict(INDIA, company_name="Apex G1obal Private Limited", bank_account_name="Apex G1obal Private Limited"), "LOOKALIKE_NAME"), "look-alikes: a name that differs from the tax registry only in look-alikes is rejected")
 
 # ---- the status definitions
 quartz = fresh(copy.deepcopy(INDIA), "Quartz Mills Private Limited", "QUACM2345Q", "79000123456709")

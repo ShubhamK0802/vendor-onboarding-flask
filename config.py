@@ -72,6 +72,11 @@ REASON_LABELS = {
     "SANCTIONS_MATCH": "Name matches the sanctions watchlist",
     "SANCTIONS_POSSIBLE": "Name is close to a sanctions watchlist entry",
     "EMBARGOED_BANK_COUNTRY": "Bank is in an embargoed country",
+    "LOOKALIKE_CHARACTERS": "Look-alike characters in an ID or number (O for 0, I or l for 1)",
+    "HIDDEN_CHARACTERS": "Hidden characters, or letters of another alphabet mixed into a word",
+    "LOOKALIKE_NAME": "Names that differ only in look-alike characters",
+    "LOOKALIKE_OF_EXISTING_VENDOR": "Name looks like an onboarded vendor's name",
+    "BAD_ACCOUNT_FORMAT": "Bank account number is not in the right format",
     "BAD_VAT_FORMAT": "German VAT ID is not DE plus 9 digits",
     "BAD_VAT_CHECKSUM": "German VAT ID fails its check digit (likely a typo)",
     "BAD_IBAN_FORMAT": "IBAN is not in the right format",
@@ -119,6 +124,11 @@ EVIDENCE_FIELDS = {
     "SANCTIONS_MATCH": NAME_FIELDS,
     "SANCTIONS_POSSIBLE": NAME_FIELDS,
     "EMBARGOED_BANK_COUNTRY": ["bank_account_number", "bank_code"],
+    "LOOKALIKE_CHARACTERS": ["tax_id", "pan", "bank_account_number", "bank_code"],
+    "HIDDEN_CHARACTERS": ["tax_id", "pan", "bank_account_number", "bank_code", "company_name", "bank_account_name"],
+    "LOOKALIKE_NAME": NAME_FIELDS,
+    "LOOKALIKE_OF_EXISTING_VENDOR": ["company_name"],
+    "BAD_ACCOUNT_FORMAT": ["bank_account_number"],
     "BANK_COUNTRY_DIFFERS": ["bank_account_number", "bank_code"],
     "NAME_NON_LATIN": NAME_FIELDS,
     "BANK_DETAILS_CHANGED": ["bank_account_number", "bank_code"],
@@ -154,6 +164,11 @@ REJECT_ON_ITS_OWN = {
     "EMBARGOED_BANK_COUNTRY": "we cannot make payments to a bank in that country",
     "REGISTRY_CANCELLED": "your tax registration is shown as cancelled or inactive",
     "PLACEHOLDER_TAX_ID": "the tax ID is a placeholder, not a real registration number",
+    # Look-alike tricks are rejected outright (no "please correct it"): honest typos are rarely made only of look-alike swaps.
+    "LOOKALIKE_CHARACTERS": "some of the details you gave contain characters that look like other letters or digits (for example O and 0)",
+    "HIDDEN_CHARACTERS": "some of the details you gave contain hidden characters, or letters from another alphabet mixed into a word",
+    "LOOKALIKE_NAME": "two names you gave look identical but are spelled with look-alike characters (for example a zero for an o)",
+    "LOOKALIKE_OF_EXISTING_VENDOR": "your company name could not be accepted",
 }
 # Countries under comprehensive sanctions (simplified: a real deployment uses the current official lists).
 EMBARGOED_COUNTRIES = {"KP", "IR", "SY", "CU"}

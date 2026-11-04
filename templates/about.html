@@ -29,12 +29,12 @@
       <tr><td><b>Rejected</b></td><td>It cannot be approved as submitted, and neither a correction nor a review would change that. The application is closed.</td><td>The vendor is told a safe reason and may start a new application.</td></tr>
     </tbody>
   </table>
-  <p><b>When is a run rejected?</b></p>
+  <p><b>When is a submission rejected?</b></p>
   <ul>
     <li><b>Two or more contradictions at once</b> (for example GSTIN and PAN disagree and the PAN type does not fit): a typo does not explain that. One contradiction alone is a mistake the vendor can fix.</li>
     <li><b>A duplicate with nothing new:</b> a company that is already onboarded applies again with exactly the same details.</li>
     <li><b>Still wrong after a second attempt:</b> the vendor was asked to fix something and resubmits with the same problem (for example a near-miss name, where a lookalike name is a known fraud tactic).</li>
-    <li><b>No reply within {{ fix_deadline_days }} days</b> to a fix request: the run closes by itself.</li>
+    <li><b>No reply within {{ fix_deadline_days }} days</b> to a fix request: the submission closes by itself.</li>
     <li><b>A reviewer rejects it.</b></li>
   </ul>
   <p>Anything the system cannot positively verify is never approved automatically.</p>
@@ -51,8 +51,8 @@
   <h2>What happens after the verdict</h2>
   <ul>
     <li>A reviewer's decision becomes the vendor's current status; the rules' original verdict is kept next to it.</li>
-    <li><i>Request more info</i> keeps the run open, waiting for the vendor.</li>
-    <li>A corrected <b>resubmission</b> is linked to the earlier run, which is then marked replaced. The new run is also checked against what the vendor was asked to fix.</li>
+    <li><i>Request more info</i> keeps the submission open, waiting for the vendor.</li>
+    <li>A corrected <b>resubmission</b> is linked to the earlier submission, which is then marked replaced. The new submission is also checked against what the vendor was asked to fix.</li>
     <li>Approved vendors join the list the duplicate check compares against. An already-onboarded company that applies again with nothing new is rejected as a duplicate; if its bank account, contact details or address changed, a reviewer verifies the change (a bank change by calling the number already on file).</li>
   </ul>
 
@@ -62,7 +62,7 @@
     <li><b>Thresholds are our own design</b> (a bank account holder name at least 80% similar to the company name, but not identical, counts as a near miss), kept in one config file. Rule version {{ rule_version }}.</li>
     <li><b>Nothing is overwritten.</b> Reviewer decisions are separate records next to the original verdict.</li>
     <li><b>Bank account numbers are masked</b> everywhere they are shown.</li>
-    <li>The history starts empty. Only the vendors already on file (for the duplicate check) exist before the first run.</li>
+    <li>The history starts empty. Only the vendors already on file (for the duplicate check) exist before the first submission.</li>
   </ul>
 
   <h2>Known limits</h2>

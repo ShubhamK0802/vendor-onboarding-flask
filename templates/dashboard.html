@@ -2,7 +2,7 @@
 {% block body %}
 <h1>Dashboard</h1>
 {% if not runs %}
-<div class="card empty">No runs yet. <a href="{{ url_for('submit_page') }}">Submit a vendor</a> and the results will appear here.</div>
+<div class="card empty">No submissions yet. <a href="{{ url_for('submit_page') }}">Onboard a vendor</a> and the results will appear here.</div>
 {% else %}
 <div class="metric total" title="Every submission the system has processed. A resubmission counts again."><span>Submissions received</span><b>{{ total }}</b></div>
 <h3>How the rules sorted them</h3>
@@ -20,7 +20,7 @@
   <section class="card"><h2>Where vendors stand now</h2>
     <table><thead><tr><th>Status</th><th>Vendors</th></tr></thead><tbody>{% for name, n in outcomes %}<tr><td>{{ name }}</td><td>{{ n }}</td></tr>{% endfor %}</tbody></table></section>
   <section class="card"><h2>Top reasons for non-approval</h2>
-    {% if top %}<table><thead><tr><th>Reason</th><th>Runs</th></tr></thead><tbody>{% for code, n in top %}<tr><td>{{ reason_labels.get(code, code) }}</td><td>{{ n }}</td></tr>{% endfor %}</tbody></table>
+    {% if top %}<table><thead><tr><th>Reason</th><th>Submissions</th></tr></thead><tbody>{% for code, n in top %}<tr><td>{{ reason_labels.get(code, code) }}</td><td>{{ n }}</td></tr>{% endfor %}</tbody></table>
     {% else %}<p class="muted">No findings yet.</p>{% endif %}</section>
 </div>
 
@@ -32,14 +32,14 @@
     </label>
   </form>
   <table>
-    <thead><tr><th>When</th><th>Run</th><th>Company</th><th>Country</th><th>Status now</th><th>Automatic verdict</th><th>Decided by</th></tr></thead>
+    <thead><tr><th>Submitted</th><th>Submission ID</th><th>Vendor ID</th><th>Company</th><th>Country</th><th>Status now</th><th>Automatic verdict</th><th>Decided by</th></tr></thead>
     <tbody>
       {% for r in history %}
       <tr class="{{ 'sel' if picked and r.run_id == picked.run_id }}">
-        <td>{{ r.ts.replace('T', ' ') }}</td><td><a href="{{ url_for('dashboard', show=show, run=r.run_id) }}#detail">{{ r.run_id }}</a></td><td>{{ r.company }}</td><td>{{ r.country }}</td>
+        <td>{{ r.ts.replace('T', ' ') }}</td><td><a href="{{ url_for('dashboard', show=show, run=r.run_id) }}#detail">{{ r.run_id }}</a></td><td>{{ r.vendor_id or '-' }}</td><td>{{ r.company }}</td><td>{{ r.country }}</td>
         <td>{{ badge(r.final, r.final_sub) }}</td><td>{{ system_verdict(r) }}</td><td>{{ r.decided_by }}</td>
       </tr>
-      {% else %}<tr><td colspan="7" class="muted">Nothing with this status.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="8" class="muted">Nothing with this status.</td></tr>{% endfor %}
     </tbody>
   </table>
 </section>
@@ -47,7 +47,7 @@
 {% if picked %}
 <section class="card" id="detail"><h2>{{ picked.company }}</h2>{% with run = picked %}{% include "_run.html" %}{% endwith %}</section>
 {% else %}
-<p class="muted">Click a run number to look at it in detail.</p>
+<p class="muted">Click a submission ID to look at it in detail.</p>
 {% endif %}
 {% endif %}
 {% endblock %}

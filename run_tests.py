@@ -61,10 +61,12 @@ check(data is None and error, "11_malformed_json", f"-> {error}")
 check(store.load_runs() == [] and len(store.known_vendors([])) == 1, "history starts empty; only the vendors on file are known")
 
 first = submit(INDIA)
+check(first == "S-0001" and run(first)["vendor_id"].startswith("V-") and len(run(first)["vendor_id"]) == 8, "submission IDs are sequential (S-0001) and vendors get a V- ID")
 check(run(first)["final"] == "Approved", "clean vendor is approved")
 again = submit(INDIA)
 check(run(again)["final"] == "Rejected" and "DUPLICATE_APPLICATION" in run(again)["codes"] and "exactly these details" in run(again)["decision"]["vendor_message"],
       "an already-onboarded vendor applying again with nothing new is rejected as a duplicate, with a safe reason")
+check(run(submit(INDIA))["vendor_id"] == run(first)["vendor_id"], "every submission by the same company carries the same vendor ID")
 moved = submit(dict(INDIA, address="99 Somewhere Else Road, Mumbai 400001"))
 check(run(moved)["final"] == "Pending" and run(moved)["waiting_on"] == "Reviewer" and "EXISTING_VENDOR" in run(moved)["codes"], "an onboarded vendor whose details changed goes to a reviewer, never auto-approved")
 changed = submit(dict(INDIA, bank_account_number="99900011122233"))
@@ -133,7 +135,7 @@ def run_web(**form):
         time.sleep(0.02)
 
 
-check(b"No runs yet" in client.get("/dashboard").data and b"Nothing is waiting" in client.get("/review").data, "web: dashboard and reviewer desk are empty before the first run")
+check(b"No submissions yet" in client.get("/dashboard").data and b"Nothing is waiting" in client.get("/review").data, "web: dashboard and reviewer desk are empty before the first run")
 check(client.get("/").status_code == 200 and client.get("/about").status_code == 200, "web: submit and about pages load")
 check(client.post("/api/submit", data={"mode": "sample", "sample": "../app.py"}).status_code == 400, "web: a sample name that is not in the sample folder is refused")
 check(client.post("/api/submit", data={"mode": "json", "json_file": (io.BytesIO(b'{"company_name": "x",'), "bad.json")}, content_type="multipart/form-data").status_code == 400, "web: malformed JSON gives a clear error, not a crash")
@@ -152,10 +154,10 @@ done = run_web(**form)
 check(client.get(f"/doc/{done['run_id']}/tax_document").data == b"%PDF-1.4 hello", "web: an uploaded document can be downloaded back")
 check(client.get(f"/api/prefill/{done['run_id']}").get_json().get("company_name") == "Form Vendor LLC" and "bank_account_number" not in client.get(f"/api/prefill/{done['run_id']}").get_json(),
       "web: resubmission prefill leaves the bank account number out")
-check(client.get("/export.csv").data.startswith(b"run,when,company"), "web: CSV export works")
+check(client.get("/export.csv").data.startswith(b"submission id,vendor id,submitted,company"), "web: CSV export works")
 check(b"Form Vendor LLC" in client.get("/dashboard").data and b"****" not in client.get("/export.csv").data, "web: dashboard lists the runs")
 client.post("/reset")
-check(b"No runs yet" in client.get("/dashboard").data, "web: reset empties the dashboard again")
+check(b"No submissions yet" in client.get("/dashboard").data, "web: reset empties the dashboard again")
 
 # a near-miss name: the vendor corrects it once; the same finding on the resubmission rejects
 first = run_web(mode="sample", sample="06_near_miss_name.json")["run_id"]

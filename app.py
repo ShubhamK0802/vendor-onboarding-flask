@@ -28,8 +28,8 @@ DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT r
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
 LEVELS = {1: "Vendor can fix", 2: "Needs review", 3: "Contradiction"}
 COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Replaced": "gray"}
-SAMPLE_HINTS = {"10_existing_vendor_resubmits.json": "run 01 first", "13_company_id_new_name.json": "run 01 first", "20_duplicate_application.json": "run 01 first",
-                "06_near_miss_name.json": "run twice: the second time pick the first run as resubmission"}
+SAMPLE_HINTS = {"10_existing_vendor_resubmits.json": "submit 01 first", "13_company_id_new_name.json": "submit 01 first", "20_duplicate_application.json": "submit 01 first",
+                "06_near_miss_name.json": "submit twice, the 2nd as a resubmission"}
 PROGRESS = {}  # token -> live progress of one run. ponytail: in-memory, so one worker process; use the database if it must scale out
 
 
@@ -64,6 +64,14 @@ def system_verdict(run):
 def effect(finding):
     """What a finding does to the run, in words (a lone contradiction is fixable; two at once reject)."""
     return "Rejects the application" if finding["code"] in REJECT_ON_ITS_OWN else LEVELS[finding["level"]]
+
+
+PRIORITY_REASONS = {"DUPLICATE_BANK_ACCOUNT": "bank account already used by another vendor", "BANK_DETAILS_CHANGED": "bank account changed on an onboarded vendor",
+                    "DUPLICATE_KEY_NEW_NAME": "company ID registered under a different name", "BANK_COUNTRY_DIFFERS": "bank in another country than the company"}
+
+
+def priority_why(run):
+    return "; ".join(PRIORITY_REASONS[c] for c in run["codes"] if c in PRIORITY_REASONS)
 
 
 def priority(run):
@@ -166,7 +174,7 @@ def api_submit():
 
 @app.get("/api/progress/<token>")
 def api_progress(token):
-    return jsonify(PROGRESS.get(token) or {"stages": [], "done": True, "run_id": None, "error": "Unknown run"})
+    return jsonify(PROGRESS.get(token) or {"stages": [], "done": True, "run_id": None, "error": "Unknown submission"})
 
 
 @app.get("/api/prefill/<run_id>")
@@ -217,7 +225,7 @@ def review_page():
     held = store.claims()
     runs = store.load_runs()
     for seq, r in enumerate(runs):
-        r.update(seq=seq, priority=priority(r), age=age(r), claimed_by=held.get(r["run_id"], {}).get("reviewer"))
+        r.update(seq=seq, priority=priority(r), why_priority=priority_why(r), age=age(r), claimed_by=held.get(r["run_id"], {}).get("reviewer"))
     sort = request.args.get("sort") if request.args.get("sort") in SORTS else "priority"
     level, text = request.args.get("priority", "All"), request.args.get("q", "").strip().lower()
     everyone = [r for r in runs if r["waiting_on"] == "Reviewer"]
@@ -299,9 +307,9 @@ def dashboard():
 def export_csv():
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["run", "when", "company", "country", "status now", "automatic verdict", "decided by", "reasons", "resubmission of"])
+    writer.writerow(["submission id", "vendor id", "submitted", "company", "country", "status now", "automatic verdict", "decided by", "reasons", "resubmission of"])
     for r in store.load_runs():
-        writer.writerow([r["run_id"], r["ts"], r["company"], r["country"], outcome(r), system_verdict(r), r["decided_by"], reasons(r), r["parent_id"] or ""])
+        writer.writerow([r["run_id"], r["vendor_id"], r["ts"], r["company"], r["country"], outcome(r), system_verdict(r), r["decided_by"], reasons(r), r["parent_id"] or ""])
     return Response(out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=vendor_onboarding_history.csv"})
 
 
@@ -314,7 +322,7 @@ def about():
 def reset():
     store.reset()
     PROGRESS.clear()
-    flash("Demo data cleared: no runs, no decisions. The vendors already on file were restored.", "ok")
+    flash("Demo data cleared: no submissions, no decisions. The vendors already on file were restored.", "ok")
     return redirect(url_for("submit_page"))
 
 

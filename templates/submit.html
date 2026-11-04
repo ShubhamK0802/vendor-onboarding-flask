@@ -5,14 +5,14 @@
     <label>Is this a corrected resubmission of an earlier submission?
       <select id="parent">
         <option value="">No, a new vendor</option>
-        {% for r in waiting %}<option value="{{ r.run_id }}">{{ r.company }} ({{ r.final_sub }}, run {{ r.run_id }})</option>{% endfor %}
+        {% for r in waiting %}<option value="{{ r.run_id }}">{{ r.company }} ({{ r.final_sub }}, {{ r.run_id }})</option>{% endfor %}
       </select>
     </label>
     <p class="muted" id="parent-note" hidden>The form was filled in from the earlier submission. For safety the bank account number is not shown: please enter it again.</p>
 
     <div class="tabs">
-      <button type="button" class="tab-btn on" data-tab="tab-form">Fill in a form</button>
-      <button type="button" class="tab-btn" data-tab="tab-sample">Ready-made sample or JSON file</button>
+      <button type="button" class="tab-btn on" data-tab="tab-form">Vendor form</button>
+      <button type="button" class="tab-btn" data-tab="tab-sample">JSON file</button>
     </div>
 
     <form id="tab-form" class="tab" data-mode="form" autocomplete="off">
@@ -34,22 +34,22 @@
       <div class="fields">
         {% for slot, text in doc_slots.items() %}<label>{{ text }}<input type="file" name="{{ slot }}"></label>{% endfor %}
       </div>
-      <button class="primary">Run checks</button>
+      <button class="primary">Submit</button>
     </form>
 
     <form id="tab-sample" class="tab" data-mode="sample" hidden>
-      <label>Pick a ready-made sample
+      <label>Choose a sample
         <select name="sample">{% for value, label in samples %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
       </label>
-      <label>...or upload a vendor submission (JSON file)<input type="file" name="json_file" accept=".json"></label>
-      <button class="primary">Run checks on the sample or file</button>
+      <label>...or upload your own JSON file<input type="file" name="json_file" accept=".json"></label>
+      <button class="primary">Submit</button>
     </form>
     <p class="error" id="error" hidden></p>
   </section>
 
   <section class="card" id="result">
-    <h2 id="result-title">Live run view</h2>
-    <p class="muted" id="placeholder">Each check appears here as it runs. Fill in the form, or pick a ready-made sample and run it.</p>
+    <h2 id="result-title">Verification progress</h2>
+    <p class="muted" id="placeholder">Each verification step appears here as it happens. Fill in the form, or choose a sample, then submit.</p>
     <ol id="stages" class="stages"></ol>
     <div id="outcome"></div>
   </section>

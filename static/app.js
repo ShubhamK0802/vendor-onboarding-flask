@@ -1,4 +1,4 @@
-// Submit page only: tabs, resubmission prefill, and the live run view (polls the server while the checks run).
+// Submit page only: tabs, resubmission prefill, and the live verification progress (polls the server while the checks run).
 const $ = (s) => document.querySelector(s);
 
 if ($('#stages')) {
@@ -36,12 +36,12 @@ if ($('#stages')) {
     buttons.forEach((b) => (b.disabled = true));
     $('#placeholder').hidden = true;
     $('#outcome').innerHTML = '';
-    $('#result-title').textContent = 'Checking vendor…';
+    $('#result-title').textContent = 'Verifying vendor…';
     for (;;) {
       const progress = await (await fetch(`/api/progress/${started.token}`)).json();
       show(progress.stages);
       if (progress.done) {
-        if (progress.error) { $('#outcome').textContent = progress.error; $('#result-title').textContent = 'Live run view'; }
+        if (progress.error) { $('#outcome').textContent = progress.error; $('#result-title').textContent = 'Verification progress'; }
         else {
           $('#outcome').innerHTML = await (await fetch(`/run/${progress.run_id}`)).text();
           $('#result-title').textContent = 'Result';
@@ -68,3 +68,8 @@ if (nameBox) {
     try { localStorage.setItem('reviewer', nameBox.value.trim()); } catch (e) { /* ignore */ }
   }));
 }
+
+// Reviewer desk: clicking anywhere on a queue row opens that submission.
+document.querySelectorAll('tr[data-href]').forEach((row) => row.addEventListener('click', (e) => {
+  if (!e.target.closest('a, button')) location.href = row.dataset.href;
+}));

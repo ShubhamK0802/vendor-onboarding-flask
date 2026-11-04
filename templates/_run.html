@@ -4,7 +4,7 @@
   {% if run.decision_by %}
   <p><b>Reviewer decision:</b> {{ run.decision_by.decision }} by {{ run.decision_by.reviewer }} at {{ run.decision_by.ts.replace('T', ' ') }}. Reason: {{ run.decision_by.note }}</p>
   {% endif %}
-  {% if run.parent_id %}<p class="muted">Resubmission of run {{ run.parent_id }}</p>{% endif %}
+  {% if run.parent_id %}<p class="muted">Resubmission of {{ run.parent_id }}</p>{% endif %}
 
   <details>
     <summary>Stage by stage</summary>
@@ -31,5 +31,5 @@
   <p><b>Documents</b></p>
   <ul class="plain">{% for d in docs %}<li><a href="{{ url_for('download_doc', run_id=run.run_id, slot=d.slot) }}">{{ doc_slots.get(d.slot, d.slot) }}: {{ d.filename }}</a></li>{% endfor %}</ul>
   {% endif %}
-  <p class="muted">Run {{ run.run_id }} · rule version {{ run.rule_version }} · rules took {{ '%.0f' % (run.seconds * 1000) }} ms</p>
+  <p class="muted">Submission {{ run.run_id }}{% if run.vendor_id %} · Vendor {{ run.vendor_id }}{% endif %} · rule version {{ run.rule_version }}</p>
 </div>

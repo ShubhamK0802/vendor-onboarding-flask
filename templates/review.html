@@ -9,24 +9,32 @@
   <form method="get" class="filters">
     <label>Order<select name="sort" onchange="this.form.submit()">{% for key, text in sorts.items() %}<option value="{{ key }}" {{ 'selected' if key == sort }}>{{ text }}</option>{% endfor %}</select></label>
     <label>Priority<select name="priority" onchange="this.form.submit()">{% for p in ['All', 'High', 'Normal'] %}<option {{ 'selected' if p == level }}>{{ p }}</option>{% endfor %}</select></label>
-    <label>Search<input name="q" value="{{ q }}" placeholder="company or run number"></label>
+    <label>View submission
+      <select onchange="if (this.value) location.href = this.value">
+        <option value="">Choose a submission ID...</option>
+        {% for r in queue + info_waiting %}<option value="{{ url_for('review_page', run=r.run_id, **args) }}" {{ 'selected' if picked and r.run_id == picked.run_id }}>{{ r.run_id }} · {{ r.company }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Search<input name="q" value="{{ q }}" placeholder="company or submission ID"></label>
     <button class="secondary">Apply</button>
   </form>
   {% if queue %}
   <table>
-    <thead><tr><th>Priority</th><th>Submission</th><th>Company</th><th>Waiting</th><th>Taken by</th><th>Why</th></tr></thead>
+    <thead><tr><th>Priority</th><th>Submission ID</th><th>Company</th><th>Waiting</th><th>Taken by</th><th>Why</th><th></th></tr></thead>
     <tbody>
       {% for r in queue %}
-      <tr class="{{ 'sel' if picked and r.run_id == picked.run_id }}">
-        <td><span class="badge {{ 'red' if r.priority == 'High' else 'gray' }}">{{ r.priority }}</span></td>
+      <tr class="clickable {{ 'sel' if picked and r.run_id == picked.run_id }}" data-href="{{ url_for('review_page', run=r.run_id, **args) }}">
+        <td><span class="badge {{ 'red' if r.priority == 'High' else 'gray' }}" title="{{ r.why_priority or 'No money or identity risk found' }}">{{ r.priority }}</span></td>
         <td><a href="{{ url_for('review_page', run=r.run_id, **args) }}">{{ r.run_id }}</a></td>
         <td>{{ r.company }}</td><td>{{ r.age }}</td><td>{{ r.claimed_by or '' }}</td>
         <td>{{ r.decision.reviewer_notes|join('; ') }}</td>
+        <td><a class="button secondary" href="{{ url_for('review_page', run=r.run_id, **args) }}">{{ 'Viewing' if picked and r.run_id == picked.run_id else 'View' }}</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}<p class="muted">No submission matches these filters.</p>{% endif %}
+  <p class="muted"><b>Priority:</b> <b>High</b> means money or identity is at risk: the bank account is already used by another vendor, an onboarded vendor changed its bank account, a company ID is registered under a different name, or the bank is in another country. Everything else is <b>Normal</b>. Hover over a badge to see why.</p>
 </div>
 {% endif %}
 
@@ -65,13 +73,13 @@
 {% endif %}
 
 <details class="card"><summary>Waiting on the vendor ({{ waiting|length }})</summary>
-  <p class="muted">The vendor fixes these and resubmits from the Submit page; the old run is then marked replaced. Where a reviewer asked for more information, you can still open it and decide if the vendor never answers.</p>
-  {% if waiting %}<table><thead><tr><th>Submission</th><th>When</th><th>Company</th><th>Status</th><th>What to fix</th></tr></thead>
+  <p class="muted">The vendor fixes these and resubmits from the Onboard vendor page; the earlier submission is then marked replaced. Where a reviewer asked for more information, you can still open it and decide if the vendor never answers.</p>
+  {% if waiting %}<table><thead><tr><th>Submission ID</th><th>Submitted</th><th>Company</th><th>Status</th><th>What to fix</th></tr></thead>
     <tbody>{% for r in waiting %}<tr><td>{% if r in info_waiting %}<a href="{{ url_for('review_page', run=r.run_id, **args) }}">{{ r.run_id }}</a>{% else %}{{ r.run_id }}{% endif %}</td><td>{{ r.ts.replace('T', ' ') }}</td><td>{{ r.company }}</td><td>{{ r.final_sub }}</td><td>{{ reasons(r) }}</td></tr>{% endfor %}</tbody></table>
   {% else %}<p class="muted">None.</p>{% endif %}
 </details>
 <details class="card"><summary>Reviewer decisions so far ({{ decisions|length }})</summary>
-  {% if decisions %}<table><thead><tr><th>When</th><th>Submission</th><th>Decision</th><th>Reviewer</th><th>Reason</th></tr></thead>
+  {% if decisions %}<table><thead><tr><th>When</th><th>Submission ID</th><th>Decision</th><th>Reviewer</th><th>Reason</th></tr></thead>
     <tbody>{% for d in decisions %}<tr><td>{{ d.ts.replace('T', ' ') }}</td><td>{{ d.run_id }}</td><td>{{ d.decision }}</td><td>{{ d.reviewer }}</td><td>{{ d.note }}</td></tr>{% endfor %}</tbody></table>
   {% else %}<p class="muted">None yet.</p>{% endif %}
 </details>

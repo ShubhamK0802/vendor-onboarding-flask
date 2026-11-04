@@ -1,7 +1,7 @@
 """All persistence in one SQLite file (stdlib). Raw submissions stay in the DB; everything shown in the UI is masked."""
+import hashlib
 import json
 import sqlite3
-import uuid
 from contextlib import closing
 from datetime import datetime, timedelta
 
@@ -50,13 +50,18 @@ def make_snapshot(submission):
 
 def save_run(submission, decision, seconds, parent_id=None, files=None):
     """files: {slot: (filename, bytes)} - the uploaded documents, kept so a reviewer can open them."""
-    run_id = uuid.uuid4().hex[:8]
-    with closing(connect()) as conn, conn:
-        conn.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
-            run_id, now(), submission.get("company_name"), submission.get("country"), decision["status"], decision["sub_status"],
-            decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
-        conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
-    return run_id
+    for _ in range(10):  # two submissions at the same moment can pick the same number: the loser takes the next one
+        try:
+            with closing(connect()) as conn, conn:
+                run_id = f"S-{conn.execute('SELECT COALESCE(MAX(CAST(SUBSTR(run_id, 3) AS INTEGER)), 0) + 1 FROM runs').fetchone()[0]:04d}"
+                conn.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
+                    run_id, now(), submission.get("company_name"), submission.get("country"), decision["status"], decision["sub_status"],
+                    decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
+                conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
+            return run_id
+        except sqlite3.IntegrityError:
+            continue
+    raise RuntimeError("could not allocate a submission ID")
 
 
 def save_decision(run_id, decision, note, reviewer):
@@ -120,6 +125,12 @@ def final_state(run):
     return state
 
 
+def vendor_id(payload):
+    """One ID per company, the same for every submission it ever makes: derived from the company's tax identity (PAN, EIN or VAT ID)."""
+    key = company_key(payload)
+    return "V-" + hashlib.sha1(key.encode()).hexdigest()[:6].upper() if key else ""
+
+
 def load_runs():
     """Oldest first. Each run carries its parsed decision, latest reviewer decision, and final state."""
     runs = query("SELECT * FROM runs ORDER BY ts, rowid")
@@ -127,6 +138,7 @@ def load_runs():
     child = {r["parent_id"]: r["run_id"] for r in runs if r["parent_id"]}
     for run in runs:
         run.update(decision=json.loads(run["decision"]), payload=json.loads(run["payload"]), snapshot=json.loads(run["snapshot"]))
+        run["vendor_id"] = vendor_id(run["payload"])
         run["findings"] = run["decision"].get("findings", [])
         run["codes"] = [f["code"] for f in run["findings"]]
         run.update(decision_by=latest.get(run["run_id"]), superseded_by=child.get(run["run_id"]))

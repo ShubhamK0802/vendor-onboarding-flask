@@ -11,7 +11,7 @@
   <div class="bar">
     <a class="brand" href="{{ url_for('submit_page') }}">Vendor Onboarding Checker</a>
     <nav>
-      <a href="{{ url_for('submit_page') }}" class="{{ 'on' if request.endpoint == 'submit_page' }}">Submit a vendor</a>
+      <a href="{{ url_for('submit_page') }}" class="{{ 'on' if request.endpoint == 'submit_page' }}">Onboard vendor</a>
       <a href="{{ url_for('review_page') }}" class="{{ 'on' if request.endpoint == 'review_page' }}">Reviewer desk{% if n_reviewer %} <span class="count">{{ n_reviewer }}</span>{% endif %}</a>
       <a href="{{ url_for('dashboard') }}" class="{{ 'on' if request.endpoint == 'dashboard' }}">Dashboard</a>
       <a href="{{ url_for('about') }}" class="{{ 'on' if request.endpoint == 'about' }}">About</a>
@@ -25,8 +25,8 @@
 <footer>
   <details>
     <summary>Demo tools</summary>
-    <form method="post" action="{{ url_for('reset') }}" onsubmit="return confirm('Clear every run and decision?')">
-      <p class="muted">Demo only: a real audit trail is never deletable. This clears all runs and decisions and restores the vendors already on file.</p>
+    <form method="post" action="{{ url_for('reset') }}" onsubmit="return confirm('Clear every submission and decision?')">
+      <p class="muted">Demo only: a real audit trail is never deletable. This clears all submissions and decisions and restores the vendors already on file.</p>
       <button class="secondary">Reset demo data</button>
     </form>
   </details>

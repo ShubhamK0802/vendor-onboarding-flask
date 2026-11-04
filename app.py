@@ -28,8 +28,7 @@ DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT r
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
 LEVELS = {1: "Vendor can fix", 2: "Needs review", 3: "Contradiction"}
 COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Replaced": "gray"}
-SAMPLE_HINTS = {"09_fix_near_miss_name.json": "submit twice, the 2nd as a resubmission", "11_review_existing_vendor_changes_bank_account.json": "submit 01 first",
-                "13_review_company_id_under_new_name.json": "submit 01 first", "20_reject_duplicate_application.json": "submit 01 first"}
+SAMPLE_HINTS = {"02_edge_name_nearly_matches_bank_account.json": "submit twice, the 2nd as a resubmission", "03_edge_existing_vendor_changes_bank_account.json": "submit 01 first"}
 PROGRESS = {}  # token -> live progress of one run. ponytail: in-memory, so one worker process; use the database if it must scale out
 
 

@@ -1,4 +1,5 @@
-"""The demo vendors. Every sample is a different realistic case; `python samples.py` writes them, the demo registry and the demo watchlist.
+"""The demo vendors. CASES is the full test matrix (every rule has a case); only the five SAMPLES below are shown in the app.
+`python samples.py` writes the five sample files, the demo registry and the demo watchlist.
 
 Sample files:        sample_inputs/*.json
 Demo tax registry:   registry.json   (SIMULATED: a real deployment calls the tax authorities)
@@ -125,19 +126,30 @@ CASES = [
 ]
 
 
+# The five samples in the app: one clean vendor and four edge cases, each a different kind of problem.
+# (sample file, the case in CASES it is written from)
+SAMPLES = [
+    ("01_approved_india_clean", "01_approved_india_clean"),                                          # the happy path
+    ("02_edge_name_nearly_matches_bank_account", "09_fix_near_miss_name"),                           # sent back, then rejected if it repeats (lookalike names are a fraud tactic)
+    ("03_edge_existing_vendor_changes_bank_account", "11_review_existing_vendor_changes_bank_account"),  # a reviewer must verify it (bank-change fraud); submit 01 first
+    ("04_edge_identity_fields_contradict", "19_reject_two_contradictions"),                          # GSTIN, PAN and entity type disagree: rejected
+    ("05_edge_name_on_sanctions_watchlist", "21_reject_sanctions_name_match"),                       # hard policy: rejected
+]
+
+
 def write_samples():
     os.makedirs("sample_inputs", exist_ok=True)
     for name in os.listdir("sample_inputs"):
         os.remove(os.path.join("sample_inputs", name))
+    by_name = {case[0]: case for case in CASES}
+    for file_name, case_name in SAMPLES:
+        with open(f"sample_inputs/{file_name}.json", "w", encoding="utf-8") as handle:
+            json.dump(by_name[case_name][1], handle, indent=2)
     registry = {"_note": "SIMULATED tax registry for the demo. A real deployment calls the tax authorities (GST portal, IRS TIN matching, EU VIES).", "IN": {}, "US": {}, "DE": {}}
     for name, data, history, status, reason, override in CASES:
-        with open(f"sample_inputs/{name}.json", "w", encoding="utf-8") as handle:
-            json.dump(data, handle, indent=2)
         key = normalize_id(data.get("tax_id"))
         if data["country"] in ("IN", "US", "DE") and key and (override or key not in registry[data["country"]]):
             registry[data["country"]][key] = {"status": "active", "name": data["company_name"], **(override or {})}
-    with open("sample_inputs/99_error_malformed_json.json", "w", encoding="utf-8") as handle:
-        handle.write('{"company_name": "Apex Global",')
     with open("registry.json", "w", encoding="utf-8") as handle:
         json.dump(registry, handle, indent=2, ensure_ascii=False)
     with open("sanctions.json", "w", encoding="utf-8") as handle:
@@ -146,4 +158,4 @@ def write_samples():
 
 if __name__ == "__main__":
     write_samples()
-    print(f"{len(CASES)} samples, registry.json and sanctions.json written")
+    print(f"{len(SAMPLES)} samples, registry.json and sanctions.json written")

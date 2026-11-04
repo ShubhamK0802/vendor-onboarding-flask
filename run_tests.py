@@ -1,6 +1,7 @@
 """Run: python run_tests.py   (exit code 1 if anything fails, so scripts and CI can catch regressions)"""
 import copy
 import io
+import json
 import os
 import re
 import sys
@@ -11,7 +12,7 @@ import store
 from decide import parse_submission, run_pipeline
 from datetime import datetime, timedelta
 
-from samples import CASES, INDIA, american, fresh, make_iban, short_tax_id
+from samples import CASES, SAMPLES, INDIA, american, fresh, make_iban, short_tax_id
 
 store.DB_PATH = os.path.join(tempfile.mkdtemp(), "test.db")
 failed = []
@@ -52,9 +53,8 @@ check([f["code"] for f in check_identity(dict(de, bank_account_number="GB82WEST1
 check(not check_name_match({"company_name": "M\u00fcller S\u00f6hne GmbH", "bank_account_name": "Mueller Soehne GmbH"})["findings"], "umlauts match their bank-statement spelling (ue, oe)")
 check([f["code"] for f in check_name_match({"company_name": "Sakura K.K. \u682a\u5f0f\u4f1a\u793e", "bank_account_name": "Sakura KK"})["findings"]] == ["NAME_NON_LATIN"], "names in non-Latin scripts go to review instead of being compared by spelling")
 
-with open("sample_inputs/99_error_malformed_json.json") as handle:
-    data, error = parse_submission(handle.read())
-check(data is None and error, "99_error_malformed_json", f"-> {error}")
+data, error = parse_submission('{"company_name": "Apex Global",')
+check(data is None and error, "malformed JSON gives a clear error", f"-> {error}")
 
 # ---- workflow: starts empty, then real runs ----
 check(store.load_runs() == [] and len(store.known_vendors([])) == 1, "history starts empty; only the vendors on file are known")
@@ -168,11 +168,30 @@ os.environ.pop("VIES_LIVE")
 store.reset()
 check(store.load_runs() == [] and store.load_decisions() == [] and len(store.known_vendors([])) == 1, "reset: no runs or decisions, vendors on file restored")
 
+# ---- the app offers exactly five samples: one clean vendor and four edge cases
+by_case = {case[0]: case for case in CASES}
+shown = sorted(f[:-5] for f in os.listdir("sample_inputs"))
+check(shown == sorted(file for file, _ in SAMPLES) and len(shown) == 5, "samples: the app offers exactly five (one clean vendor and four edge cases)", f"-> {shown}")
+check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Pending", "Vendor to fix"), ("Pending", "Needs review"), ("Rejected", None), ("Rejected", None)],
+      "samples: they cover every outcome (approved, vendor to fix, needs review, rejected twice)")
+for file, case in SAMPLES:
+    with open(f"sample_inputs/{file}.json", encoding="utf-8") as handle:
+        check(json.load(handle) == json.loads(json.dumps(by_case[case][1])), f"samples: {file} is the tested case {case}")
+
 # ---- web: the Flask routes, end to end ----
 import app  # noqa: E402  (imported after the test database is set)
 
 app.STAGE_PAUSE = 0
 client = app.app.test_client()
+
+
+CASE = {case[0]: case[1] for case in CASES}
+
+
+def run_case(name, **extra):
+    """Submit one of the test cases through the web API as an uploaded JSON file (only five of them are samples in the app)."""
+    body = json.dumps(CASE[name]).encode()
+    return run_web(mode="json", json_file=(io.BytesIO(body), f"{name}.json"), **extra)
 
 
 def run_web(**form):
@@ -191,7 +210,7 @@ check(client.post("/api/submit", data={"mode": "json", "json_file": (io.BytesIO(
 
 done = run_web(mode="sample", sample="01_approved_india_clean.json")
 check(done["error"] is None and len(done["stages"]) == 8 and b"Approved" in client.get(f"/run/{done['run_id']}").data, "web: sample runs through 8 stages and shows Approved")
-done = run_web(mode="sample", sample="12_review_bank_account_shared_with_another_vendor.json")
+done = run_case("12_review_bank_account_shared_with_another_vendor")
 pending_id = done["run_id"]
 check(pending_id.encode() in client.get("/review").data, "web: a pending run appears on the reviewer desk")
 seen = client.get(f"/run/{pending_id}").data.decode()
@@ -212,15 +231,15 @@ client.post("/reset")
 check(b"No submissions yet" in client.get("/dashboard").data, "web: reset empties the dashboard again")
 
 # a near-miss name: the vendor corrects it once; the same finding on the resubmission rejects
-first = run_web(mode="sample", sample="09_fix_near_miss_name.json")["run_id"]
+first = run_case("09_fix_near_miss_name")["run_id"]
 check(next(r for r in store.load_runs() if r["run_id"] == first)["final"] == "Pending" and b"match your company name exactly" in client.get(f"/run/{first}").data, "web: a near-miss name is first sent back to the vendor to fix")
-again = run_web(mode="sample", sample="09_fix_near_miss_name.json", parent=first)["run_id"]
+again = run_case("09_fix_near_miss_name", parent=first)["run_id"]
 check(next(r for r in store.load_runs() if r["run_id"] == again)["final"] == "Rejected" and b"not fixed after resubmission" in client.get(f"/run/{again}").data, "web: the same near-miss on the resubmission is rejected, and the vendor is told why")
 
 # ---- reviewer desk: order, filters, taking a submission, next-up, info-requested runs ----
-contact = run_web(mode="sample", sample="14_review_shared_mobile_number.json")["run_id"]  # submitted first
-clash = run_web(mode="sample", sample="12_review_bank_account_shared_with_another_vendor.json")["run_id"]  # bank account clash, submitted second
-near = run_web(mode="sample", sample="16_review_unsupported_country.json")["run_id"]  # newest
+contact = run_case("14_review_shared_mobile_number")["run_id"]  # submitted first
+clash = run_case("12_review_bank_account_shared_with_another_vendor")["run_id"]  # bank account clash, submitted second
+near = run_case("16_review_unsupported_country")["run_id"]  # newest
 
 
 def rows(html):

@@ -36,6 +36,7 @@ APEX = {
     "bank_account_number": "50100234567891",
     "mobile": "9876501234",
     "email": "accounts@apexglobal.example",
+    "address": INDIA["address"],
 }
 
 SEED = [ORION]
@@ -73,19 +74,20 @@ CASES = [
     ("03_short_tax_id", INDIA, lambda d: (fresh(d, "Kestrel Fabrics Private Limited", "KESCF2345K", "71000123456701"), short_tax_id(d)), SEED, "Pending", "Vendor to fix"),
     ("04_wrong_document_slot", INDIA, lambda d: (fresh(d, "Delta Pumps Private Limited", "DELCP3456L", "72000123456702"), d["documents"]["registration"].update(declared_type="tax_document")), SEED, "Pending", "Vendor to fix"),
     ("05_suffix_spelling", INDIA, lambda d: (fresh(d, "Sundara Textiles Private Limited", "SUNCT4567M", "73000123456703"), d.update(bank_account_name="Sundara Textiles Pvt. Ltd.")), SEED, "Approved", None),
-    ("06_near_miss_name", INDIA, lambda d: (fresh(d, "Lumina Global Private Limited", "LUMCG5678N", "74000123456704"), d.update(bank_account_name="Lumina Globe Private Limited")), SEED, "Rejected", None),
+    ("06_near_miss_name", INDIA, lambda d: (fresh(d, "Lumina Global Private Limited", "LUMCG5678N", "74000123456704"), d.update(bank_account_name="Lumina Globe Private Limited")), SEED, "Pending", "Vendor to fix"),
     ("07_shared_bank_account", INDIA, lambda d: fresh(d, "Harbor Freight Private Limited", "HARCF6789P", "60200345678912"), SEED, "Pending", "Needs review"),
     ("08_unsupported_country", INDIA, lambda d: (fresh(d, "Atlas Metals Private Limited", "ATLCM7890Q", "75000123456705"), d.update(country="BR")), SEED, "Pending", "Needs review"),
-    ("09_missing_doc_and_holder_mismatch", INDIA, lambda d: (fresh(d, "Birch Papers Private Limited", "BIRCP8901R", "76000123456706"), d["documents"].update(voided_cheque=None), d.update(bank_account_name="Zenith Traders")), SEED, "Rejected", None),
+    ("09_missing_doc_and_holder_mismatch", INDIA, lambda d: (fresh(d, "Birch Papers Private Limited", "BIRCP8901R", "76000123456706"), d["documents"].update(voided_cheque=None), d.update(bank_account_name="Zenith Traders")), SEED, "Pending", "Vendor to fix"),
     ("10_existing_vendor_resubmits", INDIA, lambda d: d.update(address="14 MG Road, Bengaluru, Karnataka 560001"), SEED + [APEX], "Pending", "Needs review"),
     ("12_identity_fields_contradict", INDIA, lambda d: (fresh(d, "Cobalt Tools Private Limited", "COBCT9012S", "77000123456707"), d.update(pan="ZZZZZ9999Z")), SEED, "Rejected", None),
     ("13_company_id_new_name", INDIA, lambda d: d.update(company_name="Apex Holdings", bank_account_name="Apex Holdings"), SEED + [APEX], "Pending", "Needs review"),
-    ("14_us_vendor_indian_tax_id", US, lambda d: (fresh(d, "Redwood Supply LLC", "29ABCCA1234D1Z6", "4400555111", mobile="3105550188", us=True)), SEED, "Pending", "Needs review"),
+    ("14_us_vendor_indian_tax_id", US, lambda d: (fresh(d, "Redwood Supply LLC", "29ABCCA1234D1Z6", "4400555111", mobile="3105550188", us=True)), SEED, "Pending", "Vendor to fix"),
     ("15_shared_contact", INDIA, lambda d: fresh(d, "Quill Stationers Private Limited", "QUICS0123T", "78000123456708", mobile="9000011111"), SEED, "Pending", "Needs review"),
     ("16_clean_germany", INDIA, lambda d: germany(d, "Nordlicht Logistik GmbH", "13669597", "370400440532013000", "COBADEFFXXX"), SEED, "Approved", None),
     ("17_germany_bad_vat_checksum", INDIA, lambda d: (germany(d, "Rheinblick Maschinen GmbH", "12345678", "100000000123456789", "MARKDEF1100"), d.update(tax_id=d["tax_id"][:-1] + str((int(d["tax_id"][-1]) + 1) % 10))), SEED, "Pending", "Vendor to fix"),
     ("18_germany_umlaut_names", INDIA, lambda d: germany(d, "Müller Söhne GmbH", "27123456", "120300000000202051", "BYLADEM1001", holder="Mueller Soehne GmbH"), SEED, "Approved", None),
     ("19_germany_foreign_bank", INDIA, lambda d: germany(d, "Kraftwerk Tools GmbH", "31987654", "", "WESTGB2LXXX", iban="GB82WEST12345698765432"), SEED, "Pending", "Needs review"),
+    ("20_duplicate_application", INDIA, lambda d: None, SEED + [APEX], "Rejected", None),
 ]
 
 

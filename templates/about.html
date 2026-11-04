@@ -19,21 +19,40 @@
     <li><b>Reviewers</b> use the Reviewer desk: a queue that can be sorted by seriousness or age, filtered and searched, with the evidence and documents, a way to take a submission so nobody else works on it, and Approve / Reject / Request more info with a required reason. After each decision the next submission opens.</li>
   </ul>
 
-  <h2>How a submission is decided</h2>
-  <p>Seven checks run in order: completeness, country routing, format checks, documents, identity checks, name match, duplicate check. Each finding has a level:</p>
+  <h2>What each status means</h2>
+  <table>
+    <thead><tr><th>Status</th><th>The test</th><th>What happens next</th></tr></thead>
+    <tbody>
+      <tr><td><b>Approved</b></td><td>Every rule positively checked out.</td><td>The vendor can be paid.</td></tr>
+      <tr><td><b>Pending: Vendor to fix</b></td><td>A mistake or gap in what the vendor sent, which the system can re-check by itself once corrected.</td><td>The vendor gets the exact fixes and resubmits. No human is involved.</td></tr>
+      <tr><td><b>Pending: Needs review</b></td><td>The answer depends on something only our staff have: our records, a call to a number already on file, or judgment. Retyping would not settle it.</td><td>A reviewer decides. The vendor is told it is under review.</td></tr>
+      <tr><td><b>Rejected</b></td><td>It cannot be approved as submitted, and neither a correction nor a review would change that. The application is closed.</td><td>The vendor is told a safe reason and may start a new application.</td></tr>
+    </tbody>
+  </table>
+  <p><b>When is a run rejected?</b></p>
   <ul>
-    <li><b>Level 1:</b> the vendor can fix it (missing document, typo in a format).</li>
-    <li><b>Level 2:</b> needs human judgment (shared bank account or contact, a vendor that is already onboarded, a changed bank account).</li>
-    <li><b>Level 3:</b> identity red flag (GSTIN and PAN disagree, tax ID from the wrong country).</li>
+    <li><b>Two or more contradictions at once</b> (for example GSTIN and PAN disagree and the PAN type does not fit): a typo does not explain that. One contradiction alone is a mistake the vendor can fix.</li>
+    <li><b>A duplicate with nothing new:</b> a company that is already onboarded applies again with exactly the same details.</li>
+    <li><b>Still wrong after a second attempt:</b> the vendor was asked to fix something and resubmits with the same problem (for example a near-miss name, where a lookalike name is a known fraud tactic).</li>
+    <li><b>No reply within {{ fix_deadline_days }} days</b> to a fix request: the run closes by itself.</li>
+    <li><b>A reviewer rejects it.</b></li>
   </ul>
-  <p><b>Approved</b> only when nothing at all is found. <b>Pending: Vendor to fix</b> when there are only Level 1 findings. <b>Pending: Needs review</b> for any Level 2, or exactly one Level 3. <b>Rejected:</b> two or more Level 3, one Level 3 plus a missing document, or a bank account holder name that is similar but not identical to the company name (for example Globe vs Global). A lookalike name is a known fraud tactic and a reviewer cannot tell it from a typo, so it is rejected; the vendor is told the names must match, and an honest vendor can submit a new application.</p>
-  <p>Anything the system cannot positively verify is never approved automatically: it goes back to the vendor, to a reviewer, or is rejected.</p>
+  <p>Anything the system cannot positively verify is never approved automatically.</p>
+
+  <h2>How the checks are sorted</h2>
+  <p>Seven checks run in order: completeness, country routing, format checks, documents, identity checks, name match, duplicate check. Each finding is one of three kinds:</p>
+  <ul>
+    <li><b>Vendor can fix</b>: missing field or document, a typo in a format, a name that nearly matches, a bank account that is not in the company's name (first time).</li>
+    <li><b>Needs review</b>: a bank account already used by another vendor, an onboarded vendor whose bank account or details changed, a company ID under a different name, an unsupported country.</li>
+    <li><b>Contradiction</b>: the tax ID contradicts the country, or GSTIN and PAN disagree. One is fixable; two reject.</li>
+  </ul>
+  <p>If the vendor repeats a contradiction about the bank account holder after being asked, a person reads their explanation (for example a signed letter of authorisation).</p>
 
   <h2>What happens after the verdict</h2>
   <ul>
     <li>A reviewer's decision becomes the vendor's current status; the rules' original verdict is kept next to it.</li>
     <li><i>Request more info</i> keeps the run open, waiting for the vendor.</li>
-    <li>A corrected <b>resubmission</b> is linked to the earlier run, which is then marked replaced.</li>
+    <li>A corrected <b>resubmission</b> is linked to the earlier run, which is then marked replaced. The new run is also checked against what the vendor was asked to fix.</li>
     <li>Approved vendors join the list the duplicate check compares against. An already-onboarded company that submits again always goes to a reviewer, and a different bank account is called out.</li>
   </ul>
 

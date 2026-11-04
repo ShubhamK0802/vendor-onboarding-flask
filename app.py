@@ -14,7 +14,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 from markupsafe import Markup, escape  # noqa: E402
 
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, HIGH_PRIORITY_CODES, NEEDS_REVIEW, RED, REASON_LABELS, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, HIGH_PRIORITY_CODES, NEEDS_REVIEW, RED, REASON_LABELS, REJECT_ON_ITS_OWN, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
 app = Flask(__name__)
@@ -26,9 +26,10 @@ COUNTRY_NAMES = {"IN": "India", "US": "United States", "DE": "Germany", "Other":
 ENTITY, COUNTRY = ["company", "llp", "partnership", "sole_proprietor", "trust"], list(COUNTRY_NAMES)
 DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT registration)", "registration": "Registration document",
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
-LEVELS = {1: "1 Vendor can fix", 2: "2 Needs review", 3: "3 Red flag"}
+LEVELS = {1: "Vendor can fix", 2: "Needs review", 3: "Contradiction"}
 COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Replaced": "gray"}
-SAMPLE_HINTS = {"10_existing_vendor_resubmits.json": "run 01 first", "13_company_id_new_name.json": "run 01 first"}
+SAMPLE_HINTS = {"10_existing_vendor_resubmits.json": "run 01 first", "13_company_id_new_name.json": "run 01 first", "20_duplicate_application.json": "run 01 first",
+                "06_near_miss_name.json": "run twice: the second time pick the first run as resubmission"}
 PROGRESS = {}  # token -> live progress of one run. ponytail: in-memory, so one worker process; use the database if it must scale out
 
 
@@ -60,6 +61,11 @@ def system_verdict(run):
     return f"{run['status']}: {run['sub_status']}" if run["sub_status"] else run["status"]
 
 
+def effect(finding):
+    """What a finding does to the run, in words (a lone contradiction is fixable; two at once reject)."""
+    return "Rejects the application" if finding["code"] in REJECT_ON_ITS_OWN else LEVELS[finding["level"]]
+
+
 def priority(run):
     """High = money or identity at risk (a red flag, a bank clash or change): the reviewer should look at these first."""
     return "High" if RED in [f["level"] for f in run["findings"]] or HIGH_PRIORITY_CODES & set(run["codes"]) else "Normal"
@@ -70,9 +76,9 @@ def age(run):
     return f"{minutes} min" if minutes < 60 else f"{minutes // 60} h" if minutes < 2880 else f"{minutes // 1440} days"
 
 
-app.jinja_env.globals.update(badge=badge, reasons=reasons, vendor_entered=vendor_entered, outcome=outcome, system_verdict=system_verdict,
+app.jinja_env.globals.update(effect=effect, badge=badge, reasons=reasons, vendor_entered=vendor_entered, outcome=outcome, system_verdict=system_verdict,
                              levels=LEVELS, reason_labels=REASON_LABELS, doc_slots=DOC_SLOTS, docs_for=lambda rid: store.get_docs(rid, with_data=False),
-                             rule_version=RULE_VERSION)
+                             rule_version=RULE_VERSION, fix_deadline_days=FIX_DEADLINE_DAYS)
 
 
 @app.context_processor
@@ -112,7 +118,7 @@ def form_submission():
     return {**{f: request.form.get(f, "") for f in FIELDS}, "documents": documents}, files
 
 
-def worker(token, submission, files, parent_id):
+def worker(token, submission, files, parent_id, previous):
     progress = PROGRESS[token]
     try:
         known, stages, started = store.known_vendors(store.load_runs()), [], time.perf_counter()
@@ -122,7 +128,7 @@ def worker(token, submission, files, parent_id):
                                        "detail": stage.get("note") or (f"{len(stage['findings'])} found" if stage["findings"] else "")})
             time.sleep(STAGE_PAUSE)
         seconds = max(time.perf_counter() - started - STAGE_PAUSE * len(stages), 0)
-        progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, parent_id=parent_id, files=files)
+        progress["run_id"] = store.save_run(submission, build_decision(stages, previous), seconds, parent_id=parent_id, files=files)
     except Exception as error:  # never leave the page spinning
         progress["error"] = f"Something went wrong: {error}"
     progress["done"] = True
@@ -147,13 +153,14 @@ def api_submit():
     if error:
         return jsonify(error=error), 400
     parent = request.form.get("parent") or None
-    if parent and not any(r["run_id"] == parent and r["waiting_on"] == "Vendor" for r in store.load_runs()):
-        parent = None
+    earlier = next((r for r in store.load_runs() if r["run_id"] == parent and r["waiting_on"] == "Vendor"), None)
+    parent = earlier["run_id"] if earlier else None
+    previous = [(f["code"], f["message"]) for f in earlier["findings"]] if earlier else []  # what this vendor was already asked to fix
     token = uuid.uuid4().hex[:10]
     if len(PROGRESS) > 200:
         PROGRESS.pop(next(iter(PROGRESS)))
     PROGRESS[token] = {"stages": [], "done": False, "run_id": None, "error": None}
-    threading.Thread(target=worker, args=(token, submission, files, parent), daemon=True).start()
+    threading.Thread(target=worker, args=(token, submission, files, parent, previous), daemon=True).start()
     return jsonify(token=token)
 
 

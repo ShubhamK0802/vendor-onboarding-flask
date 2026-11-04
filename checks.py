@@ -197,8 +197,8 @@ def check_name_match(submission):
     full_company, full_holder = normalize_name(submission["company_name"]), normalize_name(submission["bank_account_name"])
     if company == holder:
         if legal_forms(full_company) != legal_forms(full_holder):
-            return make_result("name_match", [make_finding("LEGAL_FORM_DIFFERENCE", REVIEW,
-                "Company name and bank account holder name differ in legal form (for example LLP vs Private Limited); a reviewer will confirm")])
+            return make_result("name_match", [make_finding("LEGAL_FORM_DIFFERENCE", FIX,
+                "The bank account holder and your company name differ in legal form (for example LLP vs Private Limited). Please correct whichever is wrong so they match.")])
         if full_company == full_holder:
             return make_result("name_match", [])
         note = "Names match; only the suffix spelling differs"
@@ -207,13 +207,14 @@ def check_name_match(submission):
                 "Company name and bank account holder name differ in the company suffix; a reviewer will confirm")], note=note)
         return make_result("name_match", [], note=note)
     score = fuzz.token_sort_ratio(company, holder)
-    if score >= NAME_REVIEW_THRESHOLD:
-        return make_result("name_match", [make_finding("NAME_NEAR_MISS", RED,
-            f"Company name and bank account holder name are similar but not identical ({score:.0f}% similar); a lookalike name is a known fraud tactic, so it is rejected")])
+    if score >= NAME_REVIEW_THRESHOLD:  # a typo, or a lookalike name (a known fraud tactic): the vendor corrects it once; the same finding twice rejects
+        return make_result("name_match", [make_finding("NAME_NEAR_MISS", FIX,
+            f"The bank account holder name is similar to, but not exactly, your company name ({score:.0f}% alike). Please correct whichever is wrong so they match exactly.")])
     if (clean_value(submission.get("entity_type")) or "").lower().replace(" ", "_") == "sole_proprietor":
         return make_result("name_match", [make_finding("SOLE_PROP_NAME_REVIEW", REVIEW,
             "Account holder name differs from the business name; for a sole proprietor this can be the owner's own name, so a reviewer will confirm")])
-    return make_result("name_match", [make_finding("NAME_MISMATCH", RED, "Bank account holder name does not match the company name")])
+    return make_result("name_match", [make_finding("NAME_MISMATCH", RED,
+        "The bank account must be in your company's legal name. Please give an account in that name, or attach a signed letter authorising payment to the account holder.")])
 
 
 # ---- 7. duplicates ------------------------------------------------------------------------------
@@ -223,21 +224,32 @@ def company_key(submission):
     return normalize_id(submission.get("pan")) if country == "IN" else normalize_id(submission.get("tax_id")) if country in ("US", "DE") else None
 
 
+def same(first, second):
+    return (normalize_name(first) or "") == (normalize_name(second) or "")
+
+
 def check_duplicates(submission, existing_vendors):
     key = company_key(submission)
     if key is None:
         return make_result("duplicate_check", [], skipped_reason="No company key available; see earlier stages")
     name, account = core_name(submission.get("company_name")), normalize_id(submission.get("bank_account_number"))
-    mobile, email = normalize_id(submission.get("mobile")), (clean_value(submission.get("email")) or "").lower()
+    mobile, email, address = normalize_id(submission.get("mobile")), (clean_value(submission.get("email")) or "").lower(), submission.get("address")
     found = {}
     for vendor in existing_vendors:
-        if vendor.get("company_key") == key:  # the company is already onboarded: never auto-approve, a human confirms what changed
+        if vendor.get("company_key") == key:  # this company is already onboarded: what is different decides what happens
             if core_name(vendor.get("company_name")) != name:
                 found["DUPLICATE_KEY_NEW_NAME"] = make_finding("DUPLICATE_KEY_NEW_NAME", REVIEW, "This company ID is already registered under a different name; a reviewer will confirm")
-            else:
-                found["EXISTING_VENDOR"] = make_finding("EXISTING_VENDOR", REVIEW, "This company is already an onboarded vendor; a reviewer will confirm what is being updated")
-            if account and normalize_id(vendor.get("bank_account_number")) != account:
+                continue
+            changed = False
+            if account and normalize_id(vendor.get("bank_account_number")) != account:  # the classic payment-fraud pattern: only a call to the number on file can settle it
                 found["BANK_DETAILS_CHANGED"] = make_finding("BANK_DETAILS_CHANGED", REVIEW, "The bank account differs from the one on file for this vendor; a reviewer will verify it by calling a known number")
+                changed = True
+            if (mobile and vendor.get("mobile") and normalize_id(vendor["mobile"]) != mobile) or (email and vendor.get("email") and vendor["email"].lower() != email) \
+                    or (address and vendor.get("address") and not same(vendor["address"], address)):
+                found["EXISTING_VENDOR"] = make_finding("EXISTING_VENDOR", REVIEW, "This company is already onboarded and its contact details or address changed; a reviewer will confirm the update")
+                changed = True
+            if not changed:
+                found["DUPLICATE_APPLICATION"] = make_finding("DUPLICATE_APPLICATION", REVIEW, "This company is already onboarded with exactly these details")
             continue
         if account and normalize_id(vendor.get("bank_account_number")) == account:
             found["DUPLICATE_BANK_ACCOUNT"] = make_finding("DUPLICATE_BANK_ACCOUNT", REVIEW, "This bank account is already registered to a different company; a reviewer will confirm")

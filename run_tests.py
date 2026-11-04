@@ -8,7 +8,9 @@ import time
 
 import store
 from decide import parse_submission, run_pipeline
-from samples import CASES, INDIA
+from datetime import datetime, timedelta
+
+from samples import CASES, INDIA, fresh, short_tax_id
 
 store.DB_PATH = os.path.join(tempfile.mkdtemp(), "test.db")
 failed = []
@@ -61,7 +63,10 @@ check(store.load_runs() == [] and len(store.known_vendors([])) == 1, "history st
 first = submit(INDIA)
 check(run(first)["final"] == "Approved", "clean vendor is approved")
 again = submit(INDIA)
-check(run(again)["final"] == "Pending" and "EXISTING_VENDOR" in run(again)["codes"], "an already-onboarded vendor submitting again goes to review, never auto-approved")
+check(run(again)["final"] == "Rejected" and "DUPLICATE_APPLICATION" in run(again)["codes"] and "exactly these details" in run(again)["decision"]["vendor_message"],
+      "an already-onboarded vendor applying again with nothing new is rejected as a duplicate, with a safe reason")
+moved = submit(dict(INDIA, address="99 Somewhere Else Road, Mumbai 400001"))
+check(run(moved)["final"] == "Pending" and run(moved)["waiting_on"] == "Reviewer" and "EXISTING_VENDOR" in run(moved)["codes"], "an onboarded vendor whose details changed goes to a reviewer, never auto-approved")
 changed = submit(dict(INDIA, bank_account_number="99900011122233"))
 check("BANK_DETAILS_CHANGED" in run(changed)["codes"], "a changed bank account on an onboarded vendor is called out")
 
@@ -83,6 +88,31 @@ child = submit(bad, parent_id=pending, files={"tax_document": ("w9.pdf", b"%PDF-
 check(run(pending)["final"] == "Replaced" and run(pending)["superseded_by"] == child, "resubmission supersedes the earlier run")
 check(store.get_docs(child)[0]["data"] == b"%PDF-1.4 test", "uploaded document is stored and retrievable")
 check(store.mask_account("50100234567891") == "****7891" and "50100234567891" not in str(run(first)["snapshot"]), "account numbers are masked in what the UI reads")
+
+# ---- the status definitions
+quartz = fresh(copy.deepcopy(INDIA), "Quartz Mills Private Limited", "QUACM2345Q", "79000123456709")
+outcome = lambda d, prev=(): (lambda r: (r["status"], r["sub_status"]))(run_pipeline(d, [], prev))
+check(outcome(quartz) == ("Approved", None), "status definitions: a vendor with nothing wrong is approved")
+check(outcome(dict(quartz, tax_id="123456789")) == ("Pending", "Vendor to fix"), "status definitions: one contradiction alone (tax ID of another country) is a mistake the vendor can fix")
+check(outcome(dict(quartz, pan="ZZZZZ9999Z")) == ("Rejected", None), "status definitions: two contradictions at once are rejected")
+near_miss = dict(quartz, bank_account_name="Quartz Mill Private Limited")
+first_try = run_pipeline(near_miss, [])
+check((first_try["status"], first_try["sub_status"]) == ("Pending", "Vendor to fix"), "status definitions: a near-miss name is first a vendor fix")
+asked = [(f["code"], f["message"]) for f in first_try["findings"]]
+second_try = run_pipeline(near_miss, [], asked)
+check(second_try["status"] == "Rejected" and "still not fixed" in second_try["vendor_message"], "status definitions: the same finding after being asked to fix it rejects")
+check(outcome(quartz, asked) == ("Approved", None), "status definitions: a vendor who really fixes it is approved")
+mismatch = dict(quartz, bank_account_name="Zenith Traders")
+asked = [(f["code"], f["message"]) for f in run_pipeline(mismatch, [])["findings"]]
+escalated = run_pipeline(mismatch, [], asked)
+check(run_pipeline(mismatch, [])["sub_status"] == "Vendor to fix" and (escalated["status"], escalated["sub_status"]) == ("Pending", "Needs review"), "status definitions: a third-party bank account is a vendor fix first, then a person reads their explanation")
+
+stale = submit(dict(quartz, tax_id=quartz["tax_id"][:13]))
+recent = submit(dict(quartz, tax_id=quartz["tax_id"][:12]))
+with store.connect() as conn:
+    conn.execute("UPDATE runs SET ts=? WHERE run_id=?", ((datetime.now() - timedelta(days=8)).isoformat(timespec="seconds"), stale))
+check(run(stale)["final"] == "Rejected" and "Closed" in run(stale)["final_sub"] and run(stale)["waiting_on"] == "-", "status definitions: a fix request nobody answers for 8 days closes as rejected")
+check(run(recent)["final"] == "Pending" and run(recent)["waiting_on"] == "Vendor", "status definitions: a fresh fix request stays open")
 
 store.reset()
 check(store.load_runs() == [] and store.load_decisions() == [] and len(store.known_vendors([])) == 1, "reset: no runs or decisions, vendors on file restored")
@@ -127,9 +157,11 @@ check(b"Form Vendor LLC" in client.get("/dashboard").data and b"****" not in cli
 client.post("/reset")
 check(b"No runs yet" in client.get("/dashboard").data, "web: reset empties the dashboard again")
 
-# a near-miss name is rejected outright, and the vendor is told why in safe words
-lookalike = run_web(mode="sample", sample="06_near_miss_name.json")["run_id"]
-check(next(r for r in store.load_runs() if r["run_id"] == lookalike)["final"] == "Rejected" and b"not exactly the same as your company name" in client.get(f"/run/{lookalike}").data, "web: a near-miss name is rejected and the vendor is told the reason")
+# a near-miss name: the vendor corrects it once; the same finding on the resubmission rejects
+first = run_web(mode="sample", sample="06_near_miss_name.json")["run_id"]
+check(next(r for r in store.load_runs() if r["run_id"] == first)["final"] == "Pending" and b"similar to, but not exactly" in client.get(f"/run/{first}").data, "web: a near-miss name is first sent back to the vendor to fix")
+again = run_web(mode="sample", sample="06_near_miss_name.json", parent=first)["run_id"]
+check(next(r for r in store.load_runs() if r["run_id"] == again)["final"] == "Rejected" and b"still not fixed after your resubmission" in client.get(f"/run/{again}").data, "web: the same near-miss on the resubmission is rejected, and the vendor is told why")
 
 # ---- reviewer desk: order, filters, taking a submission, next-up, info-requested runs ----
 contact = run_web(mode="sample", sample="15_shared_contact.json")["run_id"]  # normal priority, submitted first

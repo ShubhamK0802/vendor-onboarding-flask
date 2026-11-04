@@ -20,7 +20,7 @@
     {% if run.findings %}
     <table>
       <thead><tr><th>Level</th><th>Reason</th><th>Message</th></tr></thead>
-      <tbody>{% for f in run.findings %}<tr><td>{{ levels[f.level] }}</td><td>{{ reason_labels.get(f.code, f.code) }}</td><td>{{ f.message }}</td></tr>{% endfor %}</tbody>
+      <tbody>{% for f in run.findings %}<tr><td>{{ effect(f) }}</td><td>{{ reason_labels.get(f.code, f.code) }}</td><td>{{ f.message }}</td></tr>{% endfor %}</tbody>
     </table>
     {% if vendor_entered(run) %}<p><b>What the vendor entered:</b> {{ vendor_entered(run) }}</p>{% endif %}
     {% else %}<p class="muted">No findings.</p>{% endif %}

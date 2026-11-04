@@ -1,4 +1,4 @@
-RULE_VERSION = "3.0"
+RULE_VERSION = "4.0"
 
 REQUIRED_FIELDS = [
     "company_name", "entity_type", "country", "email", "mobile",
@@ -63,7 +63,8 @@ REASON_LABELS = {
     "DUPLICATE_KEY_NEW_NAME": "Same company ID already known under a different name",
     "DUPLICATE_BANK_ACCOUNT": "Bank account already used by another vendor",
     "SHARED_CONTACT": "Contact details shared with another vendor",
-    "EXISTING_VENDOR": "Company is already an onboarded vendor",
+    "EXISTING_VENDOR": "Already-onboarded vendor changed its details",
+    "DUPLICATE_APPLICATION": "Already onboarded with exactly these details",
     "BAD_VAT_FORMAT": "German VAT ID is not DE plus 9 digits",
     "BAD_VAT_CHECKSUM": "German VAT ID fails its check digit (likely a typo)",
     "BAD_IBAN_FORMAT": "IBAN is not in the right format",
@@ -102,7 +103,8 @@ EVIDENCE_FIELDS = {
     "DUPLICATE_BANK_ACCOUNT": ["bank_account_number", "bank_code"],
     "DUPLICATE_KEY_NEW_NAME": ["company_name", "tax_id", "pan"],
     "SHARED_CONTACT": ["mobile", "email"],
-    "EXISTING_VENDOR": ["company_name", "pan", "tax_id"],
+    "EXISTING_VENDOR": ["company_name", "pan", "tax_id", "mobile", "email"],
+    "DUPLICATE_APPLICATION": ["company_name", "pan", "tax_id"],
     "BANK_COUNTRY_DIFFERS": ["bank_account_number", "bank_code"],
     "NAME_NON_LATIN": NAME_FIELDS,
     "BANK_DETAILS_CHANGED": ["bank_account_number", "bank_code"],
@@ -117,6 +119,7 @@ VENDORS_ON_FILE = [{
     "bank_account_number": "60200345678912",
     "mobile": "9000011111",
     "email": "orion@orion.example",
+    "address": "5 Residency Road, Pune, Maharashtra 411001",
 }]
 
 # Reviewer desk: these findings put money at risk, so such runs are shown first (a red-flag finding does too).
@@ -126,6 +129,13 @@ HIGH_PRIORITY_CODES = {"DUPLICATE_BANK_ACCOUNT", "BANK_DETAILS_CHANGED", "DUPLIC
 NEEDS_REVIEW = "Needs review"
 VENDOR_TO_FIX = "Vendor to fix"
 
-# Findings that reject a submission on their own, with the reason the VENDOR is told (never a fraud accusation).
-# A lookalike name is a known fraud tactic, and an honest typo can simply be submitted again as a new application.
-REJECT_ON_ITS_OWN = {"NAME_NEAR_MISS": "the bank account holder name is not exactly the same as your company name"}
+# ---- When is a run Rejected? (the status definitions, in code)
+# Rejected = cannot be approved as submitted, and neither a correction nor a review would change that. It is reached by:
+#   1. a finding that rejects on its own (below), with the reason the VENDOR is told (never a fraud accusation);
+#   2. two or more identity contradictions at once, which a typo cannot explain;
+#   3. the same problem still there after the vendor was asked to fix it (a resubmission repeating a finding);
+#   4. the vendor not answering within FIX_DEADLINE_DAYS (the run closes by itself);
+#   5. a reviewer's decision.
+REJECT_ON_ITS_OWN = {"DUPLICATE_APPLICATION": "your company is already onboarded with exactly these details, so there is nothing more to do"}
+ESCALATE_TO_REVIEW = {"NAME_MISMATCH"}  # if the vendor repeats these, a person reads their explanation (for example a letter of authorisation)
+FIX_DEADLINE_DAYS = 7

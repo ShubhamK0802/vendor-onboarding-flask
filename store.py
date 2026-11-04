@@ -3,10 +3,10 @@ import json
 import sqlite3
 import uuid
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from checks import company_key
-from config import NEEDS_REVIEW, VENDORS_ON_FILE
+from config import FIX_DEADLINE_DAYS, NEEDS_REVIEW, VENDORS_ON_FILE
 
 DB_PATH = "onboarding.db"
 SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "entity_type", "country", "bank_code", "mobile", "email"]
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, 
 CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY, run_id TEXT, decision TEXT, note TEXT, reviewer TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS docs(run_id TEXT, slot TEXT, filename TEXT, data BLOB);
 CREATE TABLE IF NOT EXISTS claims(run_id TEXT PRIMARY KEY, reviewer TEXT, ts TEXT);
-CREATE TABLE IF NOT EXISTS vendors(company_key TEXT, company_name TEXT, bank_account_number TEXT, mobile TEXT, email TEXT);
+CREATE TABLE IF NOT EXISTS vendors(company_key TEXT, company_name TEXT, bank_account_number TEXT, mobile TEXT, email TEXT, address TEXT);
 """
 
 
@@ -25,7 +25,7 @@ def connect():
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     if not conn.execute("SELECT 1 FROM vendors").fetchone():  # an empty master is re-filled with the vendors that were already on file
-        conn.executemany("INSERT INTO vendors VALUES (:company_key, :company_name, :bank_account_number, :mobile, :email)", VENDORS_ON_FILE)
+        conn.executemany("INSERT INTO vendors VALUES (:company_key, :company_name, :bank_account_number, :mobile, :email, :address)", VENDORS_ON_FILE)
         conn.commit()
     return conn
 
@@ -103,17 +103,21 @@ def reset():
 
 
 def final_state(run):
-    """What a run is NOW, after reviewer decisions and vendor resubmissions (the rules' own verdict stays in status/sub_status)."""
+    """What a run is NOW, after reviewer decisions, vendor resubmissions and the time limit (the rules' own verdict stays in status/sub_status)."""
     d = run["decision_by"]
     if run["superseded_by"]:
         return {"final": "Replaced", "final_sub": f"by resubmission {run['superseded_by']}", "waiting_on": "-"}
     if d and d["decision"] in ("Approved", "Rejected"):
         return {"final": d["decision"], "final_sub": f"{d['decision']} by reviewer", "waiting_on": "-"}
     if d:
-        return {"final": "Pending", "final_sub": "Info requested from vendor", "waiting_on": "Vendor"}
-    if run["status"] == "Pending":
-        return {"final": "Pending", "final_sub": run["sub_status"], "waiting_on": "Reviewer" if run["sub_status"] == NEEDS_REVIEW else "Vendor"}
-    return {"final": run["status"], "final_sub": None, "waiting_on": "-"}
+        state, since = {"final": "Pending", "final_sub": "Info requested from vendor", "waiting_on": "Vendor"}, d["ts"]
+    elif run["status"] == "Pending":
+        state, since = {"final": "Pending", "final_sub": run["sub_status"], "waiting_on": "Reviewer" if run["sub_status"] == NEEDS_REVIEW else "Vendor"}, run["ts"]
+    else:
+        return {"final": run["status"], "final_sub": None, "waiting_on": "-"}
+    if state["waiting_on"] == "Vendor" and datetime.now() - datetime.fromisoformat(since) > timedelta(days=FIX_DEADLINE_DAYS):  # nobody answered: the run closes itself
+        return {"final": "Rejected", "final_sub": f"Closed: no reply in {FIX_DEADLINE_DAYS} days", "waiting_on": "-"}
+    return state
 
 
 def load_runs():
@@ -127,12 +131,12 @@ def load_runs():
         run["codes"] = [f["code"] for f in run["findings"]]
         run.update(decision_by=latest.get(run["run_id"]), superseded_by=child.get(run["run_id"]))
         run.update(final_state(run))
-        run["decided_by"] = run["decision_by"]["reviewer"] if run["decision_by"] and run["final"] in ("Approved", "Rejected") else "Automatic"
+        run["decided_by"] = run["decision_by"]["reviewer"] if run["decision_by"] and run["decision_by"]["decision"] in ("Approved", "Rejected") else "Automatic"
     return runs
 
 
 def known_vendors(runs):
     """What the duplicate check compares against: the vendors on file plus everything finally approved (by the rules or a reviewer)."""
     approved = [{"company_key": company_key(r["payload"]), "company_name": r["company"], "bank_account_number": r["payload"].get("bank_account_number"),
-                 "mobile": r["payload"].get("mobile"), "email": r["payload"].get("email")} for r in runs if r["final"] == "Approved"]
+                 "mobile": r["payload"].get("mobile"), "email": r["payload"].get("email"), "address": r["payload"].get("address")} for r in runs if r["final"] == "Approved"]
     return query("SELECT * FROM vendors") + approved

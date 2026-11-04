@@ -5,7 +5,7 @@ import os
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import Counter
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))  # the database and sample_inputs are found next to this file
@@ -14,7 +14,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 from markupsafe import Markup, escape  # noqa: E402
 
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, REMINDER_DAYS, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
 app = Flask(__name__)
@@ -28,7 +28,7 @@ DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT r
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
 LEVELS = {1: "Vendor can fix", 2: "Needs review", 3: "Contradiction"}
 COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Replaced": "gray"}
-SAMPLE_HINTS = {"02_edge_name_nearly_matches_bank_account.json": "submit twice, the 2nd as a resubmission", "03_edge_existing_vendor_changes_bank_account.json": "submit 01 first"}
+SAMPLE_HINTS = {"04_edge_name_nearly_matches_bank_account.json": "submit twice, the 2nd as a resubmission", "06_edge_existing_vendor_changes_bank_account.json": "submit 01 first"}
 PROGRESS = {}  # token -> live progress of one run. ponytail: in-memory, so one worker process; use the database if it must scale out
 
 
@@ -97,7 +97,7 @@ def age(run):
     return f"{minutes} min" if minutes < 60 else f"{minutes // 60} h" if minutes < 2880 else f"{minutes // 1440} days"
 
 
-app.jinja_env.globals.update(submitted=submitted, effect=effect, badge=badge, reasons=reasons, vendor_entered=vendor_entered, outcome=outcome, system_verdict=system_verdict,
+app.jinja_env.globals.update(reminder_days=REMINDER_DAYS, submitted=submitted, effect=effect, badge=badge, reasons=reasons, vendor_entered=vendor_entered, outcome=outcome, system_verdict=system_verdict,
                              levels=LEVELS, reason_labels=REASON_LABELS, doc_slots=DOC_SLOTS, docs_for=lambda rid: store.get_docs(rid, with_data=False),
                              rule_version=RULE_VERSION, fix_deadline_days=FIX_DEADLINE_DAYS)
 
@@ -316,6 +316,40 @@ def dashboard():
                            outcomes=Counter(outcome(r) for r in live).most_common(),
                            top=Counter(c for r in runs for c in set(r["codes"])).most_common(),
                            picked=next((r for r in runs if r["run_id"] == request.args.get("run")), None))
+
+
+VERDICT_SUBJECTS = {("Approved", None): "Your vendor application is approved", ("Pending", NEEDS_REVIEW): "Your vendor application is under review",
+                    ("Pending", VENDOR_TO_FIX): "Action needed on your vendor application", ("Rejected", None): "Update on your vendor application"}
+DECISION_MESSAGES = {"Approved": ("Your vendor application is approved", "Approved."), "Rejected": ("Update on your vendor application", "Not approved. Please contact support."),
+                     "Info requested": ("More information needed for your vendor application", "We need more information to finish your application. A team member will contact you.")}
+
+
+def vendor_messages(runs):
+    """Everything the vendor is told, newest first. SIMULATED: nothing is emailed; this is what a mail service would send."""
+    messages = []
+
+    def add(run, when, subject, body, kind):
+        messages.append({"when": when, "to": run["payload"].get("email") or "(no email given)", "subject": subject, "body": body, "kind": kind, "run_id": run["run_id"], "company": run["company"]})
+
+    for r in runs:
+        add(r, r["ts"], VERDICT_SUBJECTS[(r["status"], r["sub_status"])], r["decision"]["vendor_message"], "Verdict")
+        d, latest = r["decision_by"], r["decision"]["vendor_message"]
+        if d:
+            subject, latest = DECISION_MESSAGES[d["decision"]]
+            add(r, d["ts"], subject, latest, "Reviewer decision")
+        since = datetime.fromisoformat((d or r)["ts"])
+        if r["final"] == "Rejected" and (r["final_sub"] or "").startswith("Closed"):
+            add(r, (since + timedelta(days=FIX_DEADLINE_DAYS)).isoformat(timespec="seconds"), "Update on your vendor application",
+                f"Not approved: no reply within {FIX_DEADLINE_DAYS} days. If this was a mistake, submit a new application.", "Closed")
+        elif r["waiting_on"] == "Vendor" and datetime.now() >= since + timedelta(days=REMINDER_DAYS):
+            add(r, (since + timedelta(days=REMINDER_DAYS)).isoformat(timespec="seconds"), "Reminder: action needed on your vendor application",
+                "Reminder: your application is still waiting for you.\n" + latest, "Reminder")
+    return sorted(messages, key=lambda m: m["when"], reverse=True)
+
+
+@app.get("/messages")
+def messages_page():
+    return render_template("messages.html", messages=vendor_messages(store.load_runs()), fix_deadline_days=FIX_DEADLINE_DAYS)
 
 
 @app.get("/export.csv")

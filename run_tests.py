@@ -172,8 +172,8 @@ check(store.load_runs() == [] and store.load_decisions() == [] and len(store.kno
 by_case = {case[0]: case for case in CASES}
 shown = sorted(f[:-5] for f in os.listdir("sample_inputs"))
 check(shown == sorted(file for file, _ in SAMPLES) and len(shown) == 6, "samples: the app offers exactly six (one clean vendor and five edge cases)", f"-> {shown}")
-check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Pending", "Vendor to fix"), ("Pending", "Needs review"), ("Rejected", None), ("Pending", "Needs review"), ("Rejected", None)],
-      "samples: they cover every outcome (approved, vendor to fix, needs review twice, rejected twice)")
+check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Pending", "Vendor to fix"), ("Pending", "Vendor to fix"), ("Pending", "Vendor to fix"), ("Rejected", None), ("Pending", "Needs review")],
+      "samples: they cover every outcome (approved, vendor to fix, rejected, needs review)")
 for file, case in SAMPLES:
     with open(f"sample_inputs/{file}.json", encoding="utf-8") as handle:
         check(json.load(handle) == json.loads(json.dumps(by_case[case][1])), f"samples: {file} is the tested case {case}")
@@ -268,6 +268,25 @@ done_page = client.post(f"/review/{clash}", data={"reviewer": "Priya", "decision
 check(b"Rejected by Priya" in done_page and next(r for r in store.load_runs() if r["run_id"] == clash)["final"] == "Rejected", "reviewer desk: a run waiting for the vendor's reply can still be closed by a reviewer")
 client.post("/reset")
 
+
+# ---- messages to vendors (a simulated outbox): verdicts, reviewer decisions, reminders, the closing notice
+client.post("/reset")
+approved = run_case("01_approved_india_clean")["run_id"]
+fixing = run_case("04_fix_us_ein_dropped_zero")["run_id"]
+closing_id = run_case("05_fix_wrong_document_in_slot")["run_id"]
+reviewing = run_case("12_review_bank_account_shared_with_another_vendor")["run_id"]
+days_ago = lambda days: (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
+with store.connect() as conn:
+    conn.execute("UPDATE runs SET ts=? WHERE run_id=?", (days_ago(4), fixing))
+    conn.execute("UPDATE runs SET ts=? WHERE run_id=?", (days_ago(8), closing_id))
+page = client.get("/messages").data.decode()
+check("Simulated: nothing is emailed" in page and "accounts@apexglobal.example" in page and page.count("Your vendor application is approved") == 1, "messages: the page says it is simulated, shows who it is to, and lists the approval once")
+check("Action needed on your vendor application" in page and "Your vendor application is under review" in page, "messages: a sent-back and an under-review submission each get their message")
+check(page.count("Reminder: action needed on your vendor application") == 1 and "no reply within 7 days" in page, "messages: the 4-day-old fix request gets one reminder; the 8-day-old one is closed with a notice")
+client.post(f"/review/{reviewing}", data={"reviewer": "Asha", "decision": "Approved", "note": "Checked by phone"})
+check(client.get("/messages").data.decode().count("Your vendor application is approved") == 2, "messages: a reviewer's approval sends the vendor a message too")
+client.post("/reset")
+check(b"No messages yet" in client.get("/messages").data, "messages: empty before the first submission")
 
 print("ALL PASSED" if not failed else f"FAILED: {failed}")
 sys.exit(1 if failed else 0)

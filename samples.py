@@ -93,6 +93,14 @@ def wrong_slot():
     return d
 
 
+def incomplete_form():
+    """No email, no tax ID, no bank proof, and the registration certificate uploaded in the tax-document slot."""
+    d = wrong_slot()
+    d.update(email="", tax_id="")
+    d["documents"]["voided_cheque"] = None
+    return d
+
+
 # (file name, submission, vendors already known to the system, expected status, expected reason, demo-registry override)
 CASES = [
     # ---------------- Approved: nothing wrong
@@ -123,18 +131,19 @@ CASES = [
     ("22_reject_embargoed_bank_country", german("Hansa Bauteile GmbH", "58261937", "", "BKMTIRTHXXX", iban=make_iban("IR", "0120000000012345678901")), SEED, "Rejected", None, None),
     ("23_reject_cancelled_registration", indian("Orbit Exports Private Limited", "ORBCO5612S", "81000123456713"), SEED, "Rejected", None, {"status": "cancelled"}),
     ("24_reject_placeholder_tax_id", american("Summit Tools LLC", "12-3456789", "6600123987", mobile="4155550177"), SEED, "Rejected", None, None),
+    ("25_fix_incomplete_form_with_wrong_document", incomplete_form(), SEED, "Pending", "Vendor to fix", None),
 ]
 
 
-# The samples in the app: one clean vendor and five edge cases, each a different kind of problem.
+# The samples in the app: one clean vendor and five edge cases, each a case named in the Zamp brief (or its payment-fraud risk).
 # (sample file, the case in CASES it is written from)
 SAMPLES = [
-    ("01_approved_india_clean", "01_approved_india_clean"),                                              # the happy path
-    ("02_edge_name_nearly_matches_bank_account", "09_fix_near_miss_name"),                               # sent back, then rejected if it repeats (lookalike names are a fraud tactic)
-    ("03_edge_existing_vendor_changes_bank_account", "11_review_existing_vendor_changes_bank_account"),  # a reviewer must verify it (bank-change fraud); submit 01 first
-    ("04_edge_identity_fields_contradict", "19_reject_two_contradictions"),                              # GSTIN, PAN and entity type disagree: rejected
-    ("05_edge_bank_account_used_by_another_vendor", "12_review_bank_account_shared_with_another_vendor"),  # one account behind two vendors: a reviewer must look
-    ("06_edge_tax_registration_cancelled", "23_reject_cancelled_registration"),                          # the tax authority shows it as cancelled: rejected
+    ("01_approved_india_clean", "01_approved_india_clean"),                                                 # the happy path
+    ("02_edge_incomplete_form_wrong_document", "25_fix_incomplete_form_with_wrong_document"),               # "incomplete forms", "the wrong documents": a numbered list of what to send
+    ("03_edge_tax_id_wrong_for_country", "07_fix_us_company_with_indian_gstin"),                            # "the tax ID format is wrong for the country they claim"
+    ("04_edge_name_nearly_matches_bank_account", "09_fix_near_miss_name"),                                  # "the name doesn't match the bank account": sent back, rejected if it repeats
+    ("05_edge_identity_fields_contradict", "19_reject_two_contradictions"),                                 # "subtle inconsistencies when you cross-reference the fields": rejected
+    ("06_edge_existing_vendor_changes_bank_account", "11_review_existing_vendor_changes_bank_account"),     # "payment fraud": a reviewer must verify it; submit 01 first
 ]
 
 

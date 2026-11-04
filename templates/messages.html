@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Messages to vendors</h1>
+<p class="muted">Simulated: nothing is emailed. This is what a mail service would send after every verdict and reviewer decision, a reminder {{ reminder_days }} days after an unanswered fix request, and a closing notice after {{ fix_deadline_days }} days. Click a subject to read the message.</p>
+{% if not messages %}
+<div class="card empty">No messages yet. They appear as submissions are processed.</div>
+{% else %}
+<div class="card">
+  <table>
+    <thead><tr><th>Sent at</th><th>To</th><th>Subject</th><th>Type</th><th>Submission ID</th></tr></thead>
+    <tbody>
+      {% for m in messages %}
+      <tr>
+        <td>{{ m.when.replace('T', ' ') }}</td><td>{{ m.to }}</td>
+        <td><details><summary>{{ m.subject }}</summary><div class="note"><b>To:</b> {{ m.to }} ({{ m.company }})<br><br>{{ m.body }}</div></details></td>
+        <td>{{ m.kind }}</td><td><a href="{{ url_for('dashboard', run=m.run_id) }}#detail">{{ m.run_id }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

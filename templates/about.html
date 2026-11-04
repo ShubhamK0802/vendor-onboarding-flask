@@ -62,6 +62,7 @@
     <li>A reviewer's decision becomes the vendor's current status; the rules' original verdict is kept next to it.</li>
     <li><i>Request more info</i> keeps the submission open, waiting for the vendor.</li>
     <li>A corrected <b>resubmission</b> is linked to the earlier submission, which is then marked replaced. The new submission is also checked against what the vendor was asked to fix.</li>
+    <li>Every verdict, reviewer decision, reminder and closing notice creates a message to the vendor, listed on the <b>Messages</b> page (simulated: nothing is emailed).</li>
     <li>Approved vendors join the list the duplicate check compares against. An already-onboarded company that applies again with nothing new is rejected as a duplicate; if its bank account, contact details or address changed, a reviewer verifies the change (a bank change by calling the number already on file).</li>
   </ul>
 
@@ -78,7 +79,8 @@
   <ul>
     <li>Registry and sanctions checks use demo data, and bank-account ownership is not checked. The embargo list is simplified.</li>
     <li>Documents are stored for the reviewer to open, but their contents are not read. A forged document of the right type would pass.</li>
-    <li>India, US and Germany only, one bank account per submission. No document expiry tracking, and no reminder to the vendor before a fix request closes after {{ fix_deadline_days }} days.</li>
+    <li>India, US and Germany only, one bank account per submission. No document expiry tracking.</li>
+    <li>Messages to vendors are shown on the Messages page, not emailed, and reminders are listed as due, not sent.</li>
     <li>Data lives in a SQLite file; on free hosting it can reset on restart.</li>
   </ul>
 </section>

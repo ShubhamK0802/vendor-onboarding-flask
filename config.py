@@ -159,3 +159,4 @@ REJECT_ON_ITS_OWN = {
 EMBARGOED_COUNTRIES = {"KP", "IR", "SY", "CU"}
 ESCALATE_TO_REVIEW = {"NAME_MISMATCH"}  # if the vendor repeats these, a person reads their explanation (for example a letter of authorisation)
 FIX_DEADLINE_DAYS = 7
+REMINDER_DAYS = 3  # a fix request that is still unanswered after this many days gets a reminder

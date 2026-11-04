@@ -53,6 +53,33 @@ def vendor_entered(run):
     return " | ".join(lines)
 
 
+SUBMITTED_FIELDS = [("company_name", "Company name"), ("entity_type", "Entity type"), ("country", "Country"), ("tax_id", "Tax ID"), ("pan", "PAN"),
+                    ("address", "Address"), ("email", "Email"), ("mobile", "Mobile"), ("website", "Website"),
+                    ("bank_account_name", "Bank account holder"), ("bank_account_number", "Bank account"), ("bank_code", "Bank code")]
+
+
+def submitted(run):
+    """Everything the vendor sent, as a reviewer needs to read it. The bank account is masked, as everywhere. Fields a finding points at are flagged."""
+    payload = run["payload"]
+    flagged = {field for code in set(run["codes"]) for field in EVIDENCE_FIELDS.get(code, [])}
+    fields = []
+    for key, label in SUBMITTED_FIELDS:
+        value = payload.get(key)
+        if key == "bank_account_number":
+            value = store.mask_account(value)
+        elif key == "country":
+            value = f"{value} ({COUNTRY_NAMES[value]})" if value in COUNTRY_NAMES else value
+        fields.append((label, str(value).strip() if value not in (None, "") else "", key in flagged))
+    stored = {d["slot"] for d in store.get_docs(run["run_id"], with_data=False)}
+    documents = []
+    for slot, label in DOC_SLOTS.items():
+        doc = (payload.get("documents") or {}).get(slot)
+        doc = doc if isinstance(doc, dict) else None
+        documents.append({"slot": slot, "label": label, "file": doc.get("filename") if doc else None, "type": doc.get("file_type") if doc else None,
+                          "size": f"{doc['size_bytes'] / 1024:.0f} KB" if doc and doc.get("size_bytes") else None, "stored": slot in stored})
+    return {"fields": fields, "documents": documents}
+
+
 def outcome(run):
     return f"{run['final']}: {run['final_sub']}" if run["final_sub"] else run["final"]
 
@@ -71,7 +98,7 @@ def age(run):
     return f"{minutes} min" if minutes < 60 else f"{minutes // 60} h" if minutes < 2880 else f"{minutes // 1440} days"
 
 
-app.jinja_env.globals.update(effect=effect, badge=badge, reasons=reasons, vendor_entered=vendor_entered, outcome=outcome, system_verdict=system_verdict,
+app.jinja_env.globals.update(submitted=submitted, effect=effect, badge=badge, reasons=reasons, vendor_entered=vendor_entered, outcome=outcome, system_verdict=system_verdict,
                              levels=LEVELS, reason_labels=REASON_LABELS, doc_slots=DOC_SLOTS, docs_for=lambda rid: store.get_docs(rid, with_data=False),
                              rule_version=RULE_VERSION, fix_deadline_days=FIX_DEADLINE_DAYS)
 

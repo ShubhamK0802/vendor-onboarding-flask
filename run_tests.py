@@ -180,6 +180,9 @@ check(done["error"] is None and len(done["stages"]) == 8 and b"Approved" in clie
 done = run_web(mode="sample", sample="12_review_bank_account_shared_with_another_vendor.json")
 pending_id = done["run_id"]
 check(pending_id.encode() in client.get("/review").data, "web: a pending run appears on the reviewer desk")
+seen = client.get(f"/run/{pending_id}").data.decode()
+check("Harbor Freight Private Limited" in seen and "27HARCF6789P" in seen and "****8912" in seen and "60200345678912" not in seen and "flagged" in seen and "not provided" in seen,
+      "web: the submission is shown (company, IDs, masked bank account, flagged fields, missing documents) and the full account number never is")
 check(b"enter your name" in client.post(f"/review/{pending_id}", data={"decision": "Approved", "note": "ok ok ok"}, follow_redirects=True).data, "web: a decision without a name is refused")
 check(b"Approved by Asha" in client.post(f"/review/{pending_id}", data={"reviewer": "Asha", "decision": "Approved", "note": "Checked by phone"}, follow_redirects=True).data, "web: a decision with name and reason is saved")
 

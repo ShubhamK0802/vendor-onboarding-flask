@@ -6,6 +6,20 @@
   {% endif %}
   {% if run.parent_id %}<p class="muted">Resubmission of {{ run.parent_id }}</p>{% endif %}
 
+  {% set sent = submitted(run) %}
+  <details open>
+    <summary>What was submitted</summary>
+    <table class="kv">
+      <tbody>{% for label, value, flagged in sent.fields %}<tr><th>{{ label }}</th><td>{% if value %}{{ value }}{% else %}<span class="muted">not given</span>{% endif %}{% if flagged %} <span class="badge orange">flagged</span>{% endif %}</td></tr>{% endfor %}</tbody>
+    </table>
+    <table class="kv">
+      <thead><tr><th>Document</th><th>File</th><th>Type</th><th>Size</th></tr></thead>
+      <tbody>{% for d in sent.documents %}<tr><td>{{ d.label }}</td>
+        <td>{% if d.file %}{% if d.stored %}<a href="{{ url_for('download_doc', run_id=run.run_id, slot=d.slot) }}">{{ d.file }}</a>{% else %}{{ d.file }}{% endif %}{% else %}<span class="muted">not provided</span>{% endif %}</td>
+        <td>{{ d.type or '' }}</td><td>{{ d.size or '' }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </details>
+
   <details>
     <summary>Stage by stage</summary>
     <ul class="plain">
@@ -26,10 +40,5 @@
     {% else %}<p class="muted">No findings.</p>{% endif %}
   </details>
 
-  {% set docs = docs_for(run.run_id) %}
-  {% if docs %}
-  <p><b>Documents</b></p>
-  <ul class="plain">{% for d in docs %}<li><a href="{{ url_for('download_doc', run_id=run.run_id, slot=d.slot) }}">{{ doc_slots.get(d.slot, d.slot) }}: {{ d.filename }}</a></li>{% endfor %}</ul>
-  {% endif %}
   <p class="muted">Submission {{ run.run_id }}{% if run.vendor_id %} · Vendor {{ run.vendor_id }}{% endif %} · rule version {{ run.rule_version }}</p>
 </div>

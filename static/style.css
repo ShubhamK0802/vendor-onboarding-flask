@@ -58,3 +58,4 @@ footer{max-width:1200px;margin:0 auto;padding:0 20px 30px;color:var(--mu)}
 tr.clickable{cursor:pointer}tr.clickable:hover{background:var(--bg)}tr.sel{box-shadow:inset 3px 0 var(--pri)}
 .note{white-space:pre-line}
 .history-tools{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:8px}.history-tools form.inline{margin:0}
+table.kv{margin:8px 0}table.kv th{font-size:13px;color:var(--mu);font-weight:600;width:11rem;white-space:nowrap}table.kv thead th{width:auto}

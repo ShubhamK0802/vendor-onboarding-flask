@@ -1,0 +1,35 @@
+{
+  "company_name": "Hoshino Machinery Kabushiki Kaisha",
+  "entity_type": "company",
+  "country": "JP",
+  "email": "ap@hoshino.example",
+  "mobile": "09002345678",
+  "address": "1-2-3 Chiyoda, Chiyoda-ku, Tokyo 100-0001",
+  "tax_id": "7700110005903",
+  "pan": null,
+  "bank_account_name": "Hoshino Machinery Kabushiki Kaisha",
+  "bank_account_number": "2345678",
+  "bank_code": "0005123",
+  "website": "https://www.apexglobal.example",
+  "documents": {
+    "tax_document": {
+      "filename": "apex_gst_certificate.pdf",
+      "file_type": "pdf",
+      "size_bytes": 184320,
+      "declared_type": "tax_document"
+    },
+    "registration": {
+      "filename": "apex_incorporation.pdf",
+      "file_type": "pdf",
+      "size_bytes": 220160,
+      "declared_type": "registration"
+    },
+    "voided_cheque": {
+      "filename": "apex_cheque.pdf",
+      "file_type": "pdf",
+      "size_bytes": 98304,
+      "declared_type": "voided_cheque"
+    },
+    "passbook": null
+  }
+}

@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from collections import namedtuple
 
 from rapidfuzz import fuzz
@@ -50,6 +51,8 @@ EIN_PATTERN = re.compile(r"[0-9]{9}")
 GSTIN_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 ROUTING_WEIGHTS = [3, 7, 1, 3, 7, 1, 3, 7, 1]
 EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+CORPNUM_PATTERN = re.compile(r"[0-9]{13}")  # Japan: 1 check digit + 12-digit base number
+ZENGIN_PATTERN = re.compile(r"[0-9]{7}")  # Japan: 4-digit bank code + 3-digit branch code
 
 
 def gstin_check_char(first14):
@@ -70,6 +73,16 @@ def routing_checksum(value):
         return "BAD_ROUTING_CHECKSUM", "Routing number check failed; please re-check for a typo"
 
 
+def corp_number_check_digit(base12):
+    """Japan's National Tax Agency method: 9 - (weighted digit sum mod 9); weights 1,2,1,2... counted from the right."""
+    return 9 - sum(int(d) * (1 if i % 2 == 0 else 2) for i, d in enumerate(reversed(base12))) % 9
+
+
+def corp_number_checksum(value):
+    if int(value[0]) != corp_number_check_digit(value[1:]):
+        return "BAD_CORPNUM_CHECKSUM", "The corporate number's check digit does not match; please re-check for a typo"
+
+
 Rule = namedtuple("Rule", "country field pattern code message extra", defaults=(None,))
 FORMATS = [
     Rule("IN", "pan", re.compile(r"[A-Z]{5}[0-9]{4}[A-Z]"), "BAD_PAN_FORMAT",
@@ -80,6 +93,8 @@ FORMATS = [
     Rule("IN", "bank_code", re.compile(r"[A-Z]{4}0[A-Z0-9]{6}"), "BAD_IFSC_FORMAT",
          "IFSC must be 11 characters: 4 letters, the digit 0, then 6 letters or digits (example: HDFC0001234)"),
     Rule("US", "bank_code", EIN_PATTERN, "BAD_ROUTING_FORMAT", "Routing number must be 9 digits", routing_checksum),
+    Rule("JP", "tax_id", CORPNUM_PATTERN, "BAD_CORPNUM_FORMAT", "Japanese corporate number (hojin bango) must be 13 digits", corp_number_checksum),
+    Rule("JP", "bank_code", ZENGIN_PATTERN, "BAD_ZENGIN_FORMAT", "Japanese bank code must be 7 digits: 4-digit bank code then 3-digit branch code"),
 ]
 ZERO_DROPPED = ("BAD_EIN_FORMAT", "BAD_ROUTING_FORMAT")  # Excel often drops a leading zero
 
@@ -125,6 +140,9 @@ def check_documents(submission):
     return make_result("documents", findings)
 
 
+TAX_ID_KINDS = {"IN": (GSTIN_PATTERN, "an Indian GSTIN"), "US": (EIN_PATTERN, "a US EIN"), "JP": (CORPNUM_PATTERN, "a Japanese corporate number")}
+
+
 # ---- 5. identity cross-checks -------------------------------------------------------------------
 
 def check_identity(submission):
@@ -136,10 +154,10 @@ def check_identity(submission):
     allowed = PAN_HOLDER_CODES.get((entity or "").lower().replace(" ", "_"))
     if country == "IN" and pan and len(pan) == 10 and allowed and pan[3] not in allowed:
         findings.append(make_finding("PAN_ENTITY_MISMATCH", RED, f"The PAN's 4th character '{pan[3]}' does not fit the entity type '{entity}'"))
-    if country in SUPPORTED_COUNTRIES and tax_id:
-        wrong_pattern, wrong_kind, claimed = {"US": (GSTIN_PATTERN, "Indian GSTIN", "US"), "IN": (EIN_PATTERN, "US EIN", "India")}[country]
-        if wrong_pattern.fullmatch(tax_id):
-            findings.append(make_finding("ID_COUNTRY_MISMATCH", RED, f"The tax ID looks like an {wrong_kind}, but the country is {claimed}"))
+    for other, (pattern, kind) in TAX_ID_KINDS.items():  # a tax ID that is valid in ANOTHER supported country contradicts the claimed country
+        if country in SUPPORTED_COUNTRIES and tax_id and other != country and pattern.fullmatch(tax_id):
+            findings.append(make_finding("ID_COUNTRY_MISMATCH", RED, f"The tax ID looks like {kind}, but the country is {country}"))
+            break
     return make_result("identity_checks", findings)
 
 
@@ -149,10 +167,16 @@ def legal_forms(full_name):
     return {LEGAL_FORMS[word] for word in full_name.split() if word in LEGAL_FORMS}
 
 
+def non_latin(text):
+    return any(ch.isalpha() and not unicodedata.name(ch, "").startswith("LATIN") for ch in text)
+
+
 def check_name_match(submission):
     company, holder = core_name(submission.get("company_name")), core_name(submission.get("bank_account_name"))
     if not company or not holder:
         return make_result("name_match", [], skipped_reason="Company name or account holder name missing; see completeness")
+    if non_latin(submission["company_name"]) or non_latin(submission["bank_account_name"]):  # e.g. kanji vs katakana: not comparable by spelling
+        return make_result("name_match", [make_finding("NAME_NON_LATIN", REVIEW, "A name is not written in Latin letters, so it cannot be compared reliably; a reviewer will confirm")])
     full_company, full_holder = normalize_name(submission["company_name"]), normalize_name(submission["bank_account_name"])
     if company == holder:
         if legal_forms(full_company) != legal_forms(full_holder):
@@ -179,7 +203,7 @@ def check_name_match(submission):
 
 def company_key(submission):
     country = normalize_id(submission.get("country"))
-    return normalize_id(submission.get("pan")) if country == "IN" else normalize_id(submission.get("tax_id")) if country == "US" else None
+    return normalize_id(submission.get("pan")) if country == "IN" else normalize_id(submission.get("tax_id")) if country in ("US", "JP") else None
 
 
 def check_duplicates(submission, existing_vendors):

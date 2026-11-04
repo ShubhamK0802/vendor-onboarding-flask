@@ -10,7 +10,7 @@ REQUIRED_BY_COUNTRY = {
     "US": [],
 }
 
-SUPPORTED_COUNTRIES = ["IN", "US"]
+SUPPORTED_COUNTRIES = ["IN", "US", "JP"]
 
 REQUIRED_DOCS = ["tax_document", "registration"]
 BANK_PROOF_DOCS = ["voided_cheque", "passbook"]
@@ -27,6 +27,7 @@ PAN_HOLDER_CODES = {
 SUFFIX_WORDS = {
     "private", "pvt", "limited", "ltd", "llp", "company", "co",
     "corp", "corporation", "inc", "llc", "group", "and",
+    "kabushiki", "kaisha", "kk", "yugen", "godo",  # Japanese company forms written in Latin letters
 }
 
 NAME_REVIEW_THRESHOLD = 80
@@ -63,6 +64,10 @@ REASON_LABELS = {
     "DUPLICATE_BANK_ACCOUNT": "Bank account already used by another vendor",
     "SHARED_CONTACT": "Contact details shared with another vendor",
     "EXISTING_VENDOR": "Company is already an onboarded vendor",
+    "BAD_CORPNUM_FORMAT": "Japanese corporate number is not 13 digits",
+    "BAD_CORPNUM_CHECKSUM": "Japanese corporate number fails its check digit (likely a typo)",
+    "BAD_ZENGIN_FORMAT": "Japanese bank code is not 7 digits (bank 4 + branch 3)",
+    "NAME_NON_LATIN": "A name is not in Latin letters, so it cannot be compared",
     "BANK_DETAILS_CHANGED": "Bank account differs from the one on file",
 }
 
@@ -95,6 +100,7 @@ EVIDENCE_FIELDS = {
     "DUPLICATE_KEY_NEW_NAME": ["company_name", "tax_id", "pan"],
     "SHARED_CONTACT": ["mobile", "email"],
     "EXISTING_VENDOR": ["company_name", "pan", "tax_id"],
+    "NAME_NON_LATIN": NAME_FIELDS,
     "BANK_DETAILS_CHANGED": ["bank_account_number", "bank_code"],
 }
 # Finding severity: FIX = vendor can fix it, REVIEW = needs human judgment, RED = identity red flag

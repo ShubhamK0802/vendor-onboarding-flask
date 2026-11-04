@@ -36,6 +36,13 @@ for name, base, edit, history, status, sub_status in CASES:
     result = run_pipeline(data, history)
     check((result["status"], result["sub_status"]) == (status, sub_status), name, f"-> {result['status']} {result['sub_status']}")
 
+from checks import check_identity, check_name_match, corp_number_check_digit  # noqa: E402
+check(corp_number_check_digit("700110005901") == 8, "Japan corporate number check digit matches the National Tax Agency's published example (8)")
+jp_gstin = check_identity({"country": "JP", "tax_id": INDIA["tax_id"]})
+us_corp = check_identity({"country": "US", "tax_id": "8700110005901"})
+check([f["code"] for f in jp_gstin["findings"] + us_corp["findings"]] == ["ID_COUNTRY_MISMATCH"] * 2, "a tax ID that belongs to another country is a red flag (Japan with a GSTIN, US with a corporate number)")
+check(not check_name_match({"company_name": "Müller Söhne GmbH", "bank_account_name": "Müller Söhne GmbH"})["findings"], "accented Latin names are compared normally, only non-Latin scripts go to review")
+
 with open("sample_inputs/11_malformed.json") as handle:
     data, error = parse_submission(handle.read())
 check(data is None and error, "11_malformed_json", f"-> {error}")

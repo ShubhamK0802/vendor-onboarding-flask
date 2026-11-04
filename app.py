@@ -21,8 +21,9 @@ app.secret_key = os.environ.get("SECRET_KEY", "demo-only-key")  # only signs fla
 
 STAGE_PAUSE = 0.35  # seconds per check, so the live view is watchable
 FIELDS = ["company_name", "entity_type", "country", "email", "mobile", "address", "tax_id", "pan", "bank_account_name", "bank_account_number", "bank_code", "website"]
-ENTITY, COUNTRY = ["company", "llp", "partnership", "sole_proprietor", "trust"], ["IN", "US", "Other"]
-DOC_SLOTS = {"tax_document": "Tax document (GST certificate or W-9)", "registration": "Registration document",
+COUNTRY_NAMES = {"IN": "India", "US": "United States", "JP": "Japan", "Other": "Other (not supported yet)"}
+ENTITY, COUNTRY = ["company", "llp", "partnership", "sole_proprietor", "trust"], list(COUNTRY_NAMES)
+DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or Japanese corporate number notice)", "registration": "Registration document",
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
 LEVELS = {1: "1 Vendor can fix", 2: "2 Needs a human", 3: "3 Red flag"}
 COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Superseded": "gray"}
@@ -83,7 +84,7 @@ def sample_files():
 def submit_page():
     waiting = [r for r in store.load_runs() if r["waiting_on"] == "Vendor"]
     samples = [(n, f"{n}  ({SAMPLE_HINTS[n]})" if n in SAMPLE_HINTS else n) for n in sample_files()]
-    return render_template("submit.html", waiting=waiting, samples=samples, entity=ENTITY, country=COUNTRY)
+    return render_template("submit.html", waiting=waiting, samples=samples, entity=ENTITY, country=COUNTRY, names=COUNTRY_NAMES)
 
 
 def form_submission():

@@ -2,7 +2,7 @@ import copy
 import json
 import os
 
-from checks import gstin_check_char
+from checks import corp_number_check_digit, gstin_check_char
 from config import VENDORS_ON_FILE
 
 with open("sample_inputs/01_clean_india.json") as handle:
@@ -51,6 +51,14 @@ def fresh(d, name, pan, account, mobile=None, email=None, us=False):
     return d
 
 
+def japan(d, name, base12, account):
+    """A Japanese vendor: the 13-digit corporate number is a check digit followed by the 12-digit base number."""
+    d.update(company_name=name, bank_account_name=name, country="JP", entity_type="company", tax_id=f"{corp_number_check_digit(base12)}{base12}",
+             bank_account_number=account, bank_code="0005123", pan=None, mobile="090" + account.zfill(8), email=f"ap@{name.split()[0].lower()}.example",
+             address="1-2-3 Chiyoda, Chiyoda-ku, Tokyo 100-0001")
+    return d
+
+
 def short_tax_id(d):
     d["tax_id"] = d["tax_id"][:13]
 
@@ -69,6 +77,9 @@ CASES = [
     ("12_identity_fields_contradict", INDIA, lambda d: (fresh(d, "Cobalt Tools Private Limited", "COBCT9012S", "77000123456707"), d.update(pan="ZZZZZ9999Z")), SEED, "Rejected", None),
     ("13_company_id_new_name", INDIA, lambda d: d.update(company_name="Apex Holdings", bank_account_name="Apex Holdings"), SEED + [APEX], "Pending", "In review"),
     ("14_us_vendor_indian_tax_id", US, lambda d: (fresh(d, "Redwood Supply LLC", "29ABCCA1234D1Z6", "4400555111", mobile="3105550188", us=True)), SEED, "Pending", "In review"),
+    ("16_clean_japan", INDIA, lambda d: japan(d, "Sakura Components Kabushiki Kaisha", "700110005901", "1234567"), SEED, "Approved", None),
+    ("17_japan_bad_corporate_number", INDIA, lambda d: (japan(d, "Hoshino Machinery Kabushiki Kaisha", "700110005902", "2345678"), d.update(tax_id=d["tax_id"][:-1] + str((int(d["tax_id"][-1]) + 1) % 10))), SEED, "Pending", "Resubmission required"),
+    ("18_japan_non_latin_names", INDIA, lambda d: (japan(d, "Midori Foods Kabushiki Kaisha", "700110005903", "3456789"), d.update(company_name="株式会社ミドリフーズ", bank_account_name="ｶ)ﾐﾄﾞﾘﾌｰｽﾞ")), SEED, "Pending", "In review"),
     ("15_shared_contact", INDIA, lambda d: fresh(d, "Quill Stationers Private Limited", "QUICS0123T", "78000123456708", mobile="9000011111"), SEED, "Pending", "In review"),
 ]
 

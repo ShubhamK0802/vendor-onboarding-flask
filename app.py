@@ -14,7 +14,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 from markupsafe import Markup, escape  # noqa: E402
 
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, HIGH_PRIORITY_CODES, NEEDS_REVIEW, RED, REASON_LABELS, REJECT_ON_ITS_OWN, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
 app = Flask(__name__)
@@ -64,20 +64,6 @@ def system_verdict(run):
 def effect(finding):
     """What a finding does to the run, in words (a lone contradiction is fixable; two at once reject)."""
     return "Rejects the application" if finding["code"] in REJECT_ON_ITS_OWN else LEVELS[finding["level"]]
-
-
-PRIORITY_REASONS = {"DUPLICATE_BANK_ACCOUNT": "bank account already used by another vendor", "BANK_DETAILS_CHANGED": "bank account changed on an onboarded vendor",
-                    "DUPLICATE_KEY_NEW_NAME": "company ID registered under a different name", "BANK_COUNTRY_DIFFERS": "bank in another country than the company",
-                    "SANCTIONS_POSSIBLE": "name close to a sanctions watchlist entry"}
-
-
-def priority_why(run):
-    return "; ".join(PRIORITY_REASONS[c] for c in run["codes"] if c in PRIORITY_REASONS)
-
-
-def priority(run):
-    """High = money or identity at risk (a red flag, a bank clash or change): the reviewer should look at these first."""
-    return "High" if RED in [f["level"] for f in run["findings"]] or HIGH_PRIORITY_CODES & set(run["codes"]) else "Normal"
 
 
 def age(run):
@@ -208,8 +194,8 @@ def download_doc(run_id, slot):
 
 # ---------------------------------------------------------------- reviewer desk
 
-SORTS = {"priority": "Most serious first", "oldest": "Oldest first", "newest": "Newest first"}
-SORT_KEYS = {"priority": lambda r: (r["priority"] != "High", r["seq"]), "oldest": lambda r: r["seq"], "newest": lambda r: -r["seq"]}  # seq = arrival order, so runs in the same second still sort
+SORTS = {"oldest": "Oldest first", "newest": "Newest first"}
+SORT_KEYS = {"oldest": lambda r: r["seq"], "newest": lambda r: -r["seq"]}  # seq = arrival order, so runs in the same second still sort
 
 
 def reviewable(run):
@@ -226,15 +212,15 @@ def review_page():
     held = store.claims()
     runs = store.load_runs()
     for seq, r in enumerate(runs):
-        r.update(seq=seq, priority=priority(r), why_priority=priority_why(r), age=age(r), claimed_by=held.get(r["run_id"], {}).get("reviewer"))
-    sort = request.args.get("sort") if request.args.get("sort") in SORTS else "priority"
+        r.update(seq=seq, age=age(r), claimed_by=held.get(r["run_id"], {}).get("reviewer"))
+    sort = request.args.get("sort") if request.args.get("sort") in SORTS else "oldest"
     text = request.args.get("q", "").strip().lower()
     everyone = [r for r in runs if r["waiting_on"] == "Reviewer"]
     queue = sorted([r for r in everyone if text in f"{r['company']} {r['run_id']}".lower()],
                    key=SORT_KEYS[sort])
     info_waiting = [r for r in runs if reviewable(r) and r["waiting_on"] == "Vendor"]
     picked = next((r for r in queue + info_waiting if r["run_id"] == request.args.get("run")), queue[0] if queue else None)
-    return render_template("review.html", queue=queue, everyone=everyone, n_high=sum(r["priority"] == "High" for r in everyone), picked=picked,
+    return render_template("review.html", queue=queue, everyone=everyone, picked=picked,
                            info_waiting=info_waiting, waiting=[r for r in runs if r["waiting_on"] == "Vendor"], decisions=list(reversed(store.load_decisions())),
                            sorts=SORTS, sort=sort, q=request.args.get("q", ""), args={"sort": sort, "q": request.args.get("q", "")})
 
@@ -310,7 +296,7 @@ def dashboard():
 def export_csv():
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["submission id", "vendor id", "submitted", "company", "country", "status now", "automatic verdict", "decided by", "reasons", "resubmission of"])
+    writer.writerow(["submission id", "vendor id", "submitted at", "company", "country", "status now", "automatic verdict", "decided by", "reasons", "resubmission of"])
     for r in store.load_runs():
         writer.writerow([r["run_id"], r["vendor_id"], r["ts"], r["company"], r["country"], outcome(r), system_verdict(r), r["decided_by"], reasons(r), r["parent_id"] or ""])
     return Response(out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=vendor_onboarding_history.csv"})

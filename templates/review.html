@@ -5,7 +5,7 @@
 <div class="card empty">Nothing is waiting for a reviewer.</div>
 {% else %}
 <div class="card">
-  <p><b>{{ everyone|length }}</b> vendor(s) need a human decision{% if n_high %}, <b>{{ n_high }}</b> of them high priority{% endif %}. Take any one; the order below is only a suggestion.</p>
+  <p><b>{{ everyone|length }}</b> vendor(s) need a human decision. Click one to open it.</p>
   <form method="get" class="filters">
     <label>Order<select name="sort" onchange="this.form.submit()">{% for key, text in sorts.items() %}<option value="{{ key }}" {{ 'selected' if key == sort }}>{{ text }}</option>{% endfor %}</select></label>
     <label>Search<input name="q" value="{{ q }}" placeholder="company or submission ID"></label>
@@ -13,11 +13,10 @@
   </form>
   {% if queue %}
   <table>
-    <thead><tr><th>Priority</th><th>Submission ID</th><th>Company</th><th>Waiting</th><th>Taken by</th><th>Why</th><th></th></tr></thead>
+    <thead><tr><th>Submission ID</th><th>Company</th><th>Waiting</th><th>Taken by</th><th>Why</th><th></th></tr></thead>
     <tbody>
       {% for r in queue %}
       <tr class="clickable {{ 'sel' if picked and r.run_id == picked.run_id }}" data-href="{{ url_for('review_page', run=r.run_id, **args) }}">
-        <td><span class="badge {{ 'red' if r.priority == 'High' else 'gray' }}" title="{{ r.why_priority or 'No money or identity risk found' }}">{{ r.priority }}</span></td>
         <td><a href="{{ url_for('review_page', run=r.run_id, **args) }}">{{ r.run_id }}</a></td>
         <td>{{ r.company }}</td><td>{{ r.age }}</td><td>{{ r.claimed_by or '' }}</td>
         <td>{{ r.decision.reviewer_notes|join('; ') }}</td>
@@ -27,13 +26,12 @@
     </tbody>
   </table>
   {% else %}<p class="muted">No submission matches these filters.</p>{% endif %}
-  <p class="muted"><b>Priority:</b> <b>High</b> means money or identity is at risk: the bank account is already used by another vendor, an onboarded vendor changed its bank account, a company ID is registered under a different name, or the bank is in another country. Everything else is <b>Normal</b>. Hover over a badge to see why.</p>
 </div>
 {% endif %}
 
 {% if picked %}
 <div class="grid">
-  <section class="card"><h2>{{ picked.company }} <span class="badge {{ 'red' if picked.priority == 'High' else 'gray' }}">{{ picked.priority }}</span></h2>{% with run = picked %}{% include "_run.html" %}{% endwith %}</section>
+  <section class="card"><h2>{{ picked.company }}</h2>{% with run = picked %}{% include "_run.html" %}{% endwith %}</section>
   <section class="card">
     <h2>Your decision</h2>
     <label>Your name (recorded with everything you do)<input id="reviewer-name" placeholder="e.g. Priya Sharma"></label>

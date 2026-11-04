@@ -14,7 +14,6 @@
   <div class="metric" title="Waiting for a reviewer's decision"><span>With a reviewer now</span><b>{{ with_reviewer }}</b></div>
   <div class="metric" title="Waiting for the vendor to fix something or answer a question"><span>With the vendor now</span><b>{{ with_vendor }}</b></div>
 </div>
-<p><a class="button secondary" href="{{ url_for('export_csv') }}">Export history (CSV)</a></p>
 
 <div class="grid">
   <section class="card"><h2>Where vendors stand now</h2>
@@ -26,11 +25,14 @@
 
 <section class="card">
   <h2>History</h2>
-  <form method="get" class="inline">
-    <label>Show
-      <select name="show" onchange="this.form.submit()">{% for s in ['All', 'Approved', 'Pending', 'Rejected', 'Replaced'] %}<option {{ 'selected' if s == show }}>{{ s }}</option>{% endfor %}</select>
-    </label>
-  </form>
+  <div class="history-tools">
+    <form method="get" class="inline">
+      <label>Show
+        <select name="show" onchange="this.form.submit()">{% for s in ['All', 'Approved', 'Pending', 'Rejected', 'Replaced'] %}<option {{ 'selected' if s == show }}>{{ s }}</option>{% endfor %}</select>
+      </label>
+    </form>
+    <a class="button secondary" href="{{ url_for('export_csv') }}">Export CSV</a>
+  </div>
   <table>
     <thead><tr><th>Submitted at</th><th>Submission ID</th><th>Vendor ID</th><th>Company</th><th>Country</th><th>Status now</th><th>Automatic verdict</th><th>Decided by</th></tr></thead>
     <tbody>

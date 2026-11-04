@@ -126,6 +126,10 @@ EVIDENCE_FIELDS = {
 # Finding severity: FIX = vendor can fix it, REVIEW = needs human judgment, RED = identity red flag
 FIX, REVIEW, RED = 1, 2, 3
 
+# The two reasons a run can be Pending (status names shown everywhere).
+NEEDS_REVIEW = "Needs review"
+VENDOR_TO_FIX = "Vendor to fix"
+
 # Vendors already onboarded before this system started: the duplicate check compares every submission against them.
 VENDORS_ON_FILE = [{
     "company_key": "PQRSX5678L",
@@ -135,13 +139,6 @@ VENDORS_ON_FILE = [{
     "email": "orion@orion.example",
     "address": "5 Residency Road, Pune, Maharashtra 411001",
 }]
-
-# Reviewer desk: these findings put money at risk, so such runs are shown first (a red-flag finding does too).
-HIGH_PRIORITY_CODES = {"DUPLICATE_BANK_ACCOUNT", "BANK_DETAILS_CHANGED", "DUPLICATE_KEY_NEW_NAME", "BANK_COUNTRY_DIFFERS", "SANCTIONS_POSSIBLE"}
-
-# The two reasons a run can be Pending (status names shown everywhere).
-NEEDS_REVIEW = "Needs review"
-VENDOR_TO_FIX = "Vendor to fix"
 
 # ---- When is a run Rejected? (the status definitions, in code)
 # Rejected = cannot be approved as submitted, and neither a correction nor a review would change that. It is reached by:

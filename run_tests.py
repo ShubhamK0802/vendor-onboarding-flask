@@ -75,9 +75,11 @@ near.update(company_name="Orion Lookalike Traders", pan="LMNOP4321Q", tax_id="27
 shared = submit(near)
 check(run(shared)["waiting_on"] == "Reviewer" and "DUPLICATE_BANK_ACCOUNT" in run(shared)["codes"], "a bank account already on file sends the run to a reviewer")
 
+check(run(shared)["vendor_id"] == "", "vendor ID: a company that has not been approved has none")
 store.save_decision(shared, "Info requested", "Please send a bank letter", "Asha")
 check(run(shared)["waiting_on"] == "Vendor", "info requested: leaves the reviewer queue but stays visible, waiting on the vendor")
 store.save_decision(shared, "Approved", "Bank letter received", "Asha")
+check(run(shared)["vendor_id"].startswith("V-"), "vendor ID: a reviewer approving a company issues one")
 check(run(shared)["final"] == "Approved" and run(shared)["decided_by"] == "Asha", "reviewer approval changes the final status and records who")
 check(any(v["company_name"] == "Orion Lookalike Traders" for v in store.known_vendors(store.load_runs())), "reviewer-approved vendor joins the duplicate check list")
 
@@ -93,6 +95,8 @@ check(store.mask_account("50100234567891") == "****7891" and "50100234567891" no
 quartz = fresh(copy.deepcopy(INDIA), "Quartz Mills Private Limited", "QUACM2345Q", "79000123456709")
 outcome = lambda d, prev=(): (lambda r: (r["status"], r["sub_status"]))(run_pipeline(d, [], prev))
 check(outcome(quartz) == ("Approved", None), "status definitions: a vendor with nothing wrong is approved")
+never = submit(dict(quartz, tax_id="123456789"))
+check(run(never)["vendor_id"] == "", "vendor ID: a sent-back or rejected company never gets a vendor ID")
 
 # ---- the vendor message is short and to the point
 two = run_pipeline(dict(quartz, bank_account_name="Zenith Traders", documents=dict(quartz["documents"], voided_cheque=None)), [])["vendor_message"]
@@ -185,7 +189,7 @@ done = run_web(**form)
 check(client.get(f"/doc/{done['run_id']}/tax_document").data == b"%PDF-1.4 hello", "web: an uploaded document can be downloaded back")
 check(client.get(f"/api/prefill/{done['run_id']}").get_json().get("company_name") == "Form Vendor LLC" and "bank_account_number" not in client.get(f"/api/prefill/{done['run_id']}").get_json(),
       "web: resubmission prefill leaves the bank account number out")
-check(client.get("/export.csv").data.startswith(b"submission id,vendor id,submitted,company"), "web: CSV export works")
+check(client.get("/export.csv").data.startswith(b"submission id,vendor id,submitted at,company"), "web: CSV export works")
 check(b"Form Vendor LLC" in client.get("/dashboard").data and b"Handled without a human" in client.get("/dashboard").data and b"****" not in client.get("/export.csv").data, "web: dashboard lists the runs")
 client.post("/reset")
 check(b"No submissions yet" in client.get("/dashboard").data, "web: reset empties the dashboard again")
@@ -197,9 +201,9 @@ again = run_web(mode="sample", sample="09_fix_near_miss_name.json", parent=first
 check(next(r for r in store.load_runs() if r["run_id"] == again)["final"] == "Rejected" and b"not fixed after resubmission" in client.get(f"/run/{again}").data, "web: the same near-miss on the resubmission is rejected, and the vendor is told why")
 
 # ---- reviewer desk: order, filters, taking a submission, next-up, info-requested runs ----
-contact = run_web(mode="sample", sample="14_review_shared_mobile_number.json")["run_id"]  # normal priority, submitted first
-clash = run_web(mode="sample", sample="12_review_bank_account_shared_with_another_vendor.json")["run_id"]  # bank account clash: high priority, submitted second
-near = run_web(mode="sample", sample="16_review_unsupported_country.json")["run_id"]  # normal priority, newest
+contact = run_web(mode="sample", sample="14_review_shared_mobile_number.json")["run_id"]  # submitted first
+clash = run_web(mode="sample", sample="12_review_bank_account_shared_with_another_vendor.json")["run_id"]  # bank account clash, submitted second
+near = run_web(mode="sample", sample="16_review_unsupported_country.json")["run_id"]  # newest
 
 
 def rows(html):
@@ -208,7 +212,7 @@ def rows(html):
 
 
 order = lambda url: [rid for _, rid in rows(client.get(url).data)]
-check(order("/review") == [clash, contact, near], "reviewer desk: default order puts the high-priority run first, then oldest")
+check(order("/review") == [contact, clash, near] and b"riority" not in client.get("/review").data, "reviewer desk: oldest first by default, and no priority anywhere")
 check(order("/review?sort=oldest") == [contact, clash, near] and order("/review?sort=newest") == [near, clash, contact], "reviewer desk: oldest-first and newest-first orders")
 check(order("/review?q=quill") == [contact] and order("/review?q=harbor") == [clash], "reviewer desk: search by company")
 check(b"Being handled by" not in client.get(f"/review?run={contact}").data, "reviewer desk: nothing is taken at first")
@@ -221,7 +225,7 @@ check(b"Only Asha can give" in client.post(f"/review/{contact}/release", data={"
 client.post(f"/review/{contact}/release", data={"reviewer": "asha"})
 check(b"Being handled by" not in client.get(f"/review?run={contact}").data, "reviewer desk: giving it back frees it (names are not case-sensitive)")
 
-page = client.post(f"/review/{clash}", data={"reviewer": "Asha", "decision": "Info requested", "note": "Send a bank letter", "sort": "priority"}, follow_redirects=True).data
+page = client.post(f"/review/{clash}", data={"reviewer": "Asha", "decision": "Info requested", "note": "Send a bank letter", "sort": "oldest"}, follow_redirects=True).data
 check(f">{contact}</a>" in page.decode() and f"run={clash}" in page.decode(), "reviewer desk: after a decision the next submission opens, and an info-requested run stays reachable")
 check(store.load_runs() and next(r for r in store.load_runs() if r["run_id"] == clash)["waiting_on"] == "Vendor", "reviewer desk: info requested moves the run to waiting on the vendor")
 done_page = client.post(f"/review/{clash}", data={"reviewer": "Priya", "decision": "Rejected", "note": "Vendor never replied"}, follow_redirects=True).data

@@ -207,7 +207,7 @@ def run_partial(run_id):
     run = get_run(run_id)
     if not run:
         abort(404)
-    return render_template("_run.html", run=run)
+    return render_template("_run.html", run=run, vendor_view=True)
 
 
 @app.get("/doc/<run_id>/<slot>")

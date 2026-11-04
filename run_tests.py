@@ -280,6 +280,9 @@ with store.connect() as conn:
     conn.execute("UPDATE runs SET ts=? WHERE run_id=?", (days_ago(4), fixing))
     conn.execute("UPDATE runs SET ts=? WHERE run_id=?", (days_ago(8), closing_id))
 page = client.get("/messages").data.decode()
+shown_to_vendor = "Your application is under review. We will reach back to you if anything is needed."
+check(shown_to_vendor in client.get(f"/run/{reviewing}").data.decode() and shown_to_vendor not in client.get(f"/review?run={reviewing}").data.decode()
+      and shown_to_vendor not in client.get(f"/dashboard?run={reviewing}").data.decode(), "the vendor's message shows on the vendor's result page, not on the reviewer desk or the dashboard detail")
 check("Simulated: nothing is emailed" in page and "accounts@apexglobal.example" in page and page.count("Your application is approved.") == 1, "messages: the page says it is simulated, shows who it is to, and lists the approval once")
 check("Your application is under review. We will reach back to you if anything is needed." in page and "Please fix" in page, "messages: an under-review submission is told it will be contacted if anything is needed; a sent-back one is told what to fix")
 check(page.count("Reminder: your application is still waiting") == 1 and "did not hear back within 7 days" in page, "messages: the 4-day-old fix request gets one reminder; the 8-day-old one is closed with a notice")

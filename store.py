@@ -1,4 +1,5 @@
 """All persistence in one SQLite file (stdlib). Raw submissions stay in the DB; everything shown in the UI is masked."""
+import os
 import uuid
 import json
 import sqlite3
@@ -8,7 +9,7 @@ from datetime import datetime
 from checks import company_key
 from config import NEEDS_REVIEW, VENDORS_ON_FILE
 
-DB_PATH = "onboarding.db"
+DB_PATH = os.environ.get("DB_PATH", "onboarding.db")  # on the free host a fresh file per start (see render.yaml): a file left locked by a killed process cannot block the next start
 SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "entity_type", "country", "bank_code", "mobile", "email"]
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, country TEXT, status TEXT, sub_status TEXT,
@@ -30,7 +31,7 @@ def new_vendor_id(country):
 
 
 def connect():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)  # wait for another thread's write instead of failing
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     if not conn.execute("SELECT 1 FROM vendors").fetchone():  # an empty master is re-filled with the vendors that were already on file

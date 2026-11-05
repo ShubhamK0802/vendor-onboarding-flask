@@ -16,7 +16,7 @@ from markupsafe import Markup, escape  # noqa: E402
 
 import mailer  # noqa: E402
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, RATE_LIMIT_PER_HOUR, REMINDER_DAYS, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, RATE_LIMIT_PER_HOUR, RULE_VERSION  # noqa: E402
 from checks import link_reasons  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
@@ -31,7 +31,7 @@ ENTITY, COUNTRY = ["company", "llp", "partnership", "sole_proprietor", "trust"],
 DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT registration)", "registration": "Registration document",
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
 LEVELS = {1: "Vendor can fix", 2: "Needs review", 3: "Contradiction"}
-COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Replaced": "gray"}
+COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red"}
 SAMPLE_HINTS = {"06_edge_existing_vendor_changes_bank_account.json": "submit 01 first",
                 "02b_corrected_incomplete_form_completed.json": "the fix for 02: approved", "03b_corrected_tax_id_for_country.json": "the fix for 03: approved",
                 "04b_corrected_bank_holder_name_matches.json": "the fix for 04: approved", "05b_corrected_identity_fields_consistent.json": "the fix for 05: approved",
@@ -105,15 +105,15 @@ def age(run):
     return f"{minutes} min" if minutes < 60 else f"{minutes // 60} h" if minutes < 2880 else f"{minutes // 1440} days"
 
 
-app.jinja_env.globals.update(reminder_days=REMINDER_DAYS, submitted=submitted, effect=effect, badge=badge, reasons=reasons, vendor_entered=vendor_entered, outcome=outcome, system_verdict=system_verdict,
+app.jinja_env.globals.update(submitted=submitted, effect=effect, badge=badge, reasons=reasons, vendor_entered=vendor_entered, outcome=outcome, system_verdict=system_verdict,
                              levels=LEVELS, reason_labels=REASON_LABELS, doc_slots=DOC_SLOTS, docs_for=lambda rid: store.get_docs(rid, with_data=False),
-                             rule_version=RULE_VERSION, fix_deadline_days=FIX_DEADLINE_DAYS)
+                             rule_version=RULE_VERSION)
 
 
 @app.context_processor
 def nav_counts():
     runs = store.load_runs()
-    return {"n_reviewer": sum(r["waiting_on"] == "Reviewer" for r in runs), "n_vendor": sum(r["waiting_on"] == "Vendor" for r in runs)}
+    return {"n_reviewer": sum(r["waiting_on"] == "Reviewer" for r in runs)}
 
 
 def get_run(run_id):
@@ -157,13 +157,10 @@ def worker(token, submission, files):
                                        "detail": stage.get("note") or (f"{len(stage['findings'])} found" if stage["findings"] else "")})
             time.sleep(STAGE_PAUSE)
         seconds = max(time.perf_counter() - started - STAGE_PAUSE * len(stages), 0)
-        # An application the vendor was waiting to fix is closed as replaced when the same applicant files a new one. This only tidies the history:
-        # nothing about the earlier application is carried into this one's decision.
-        replaced = next((r["run_id"] for r in reversed(history) if r["waiting_on"] == "Vendor" and link_reasons(submission, r)), None)
         # The same applicant keeps one vendor ID across attempts, even when the tax ID was the thing that was wrong or the earlier attempt was rejected.
         # Only strong links count here (a shared name or file is a hint for the reviewer, not proof of identity).
         same_as = next((r["run_id"] for r in reversed(history) if {"company ID", "bank account", "phone", "email"} & set(link_reasons(submission, r))), None)
-        progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, parent_id=replaced, files=files, same_as=same_as)
+        progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, files=files, same_as=same_as)
         mailer.enqueue_verdict(progress["run_id"])  # the vendor is told the verdict; a background worker sends it
     except Exception as error:  # never leave the page spinning
         progress["error"] = f"Something went wrong: {error}"
@@ -235,8 +232,8 @@ SORT_KEYS = {"oldest": lambda r: r["seq"], "newest": lambda r: -r["seq"]}  # seq
 
 
 def reviewable(run):
-    """A reviewer can decide runs the rules sent to them, and runs where they asked the vendor for more information."""
-    return bool(run) and run["final"] == "Pending" and (run["waiting_on"] == "Reviewer" or bool(run["decision_by"]))
+    """A reviewer can decide the runs the rules sent to them."""
+    return bool(run) and run["final"] == "Pending" and run["waiting_on"] == "Reviewer"
 
 
 def back_args(source):
@@ -254,10 +251,9 @@ def review_page():
     everyone = [r for r in runs if r["waiting_on"] == "Reviewer"]
     queue = sorted([r for r in everyone if text in f"{r['company']} {r['run_id']}".lower()],
                    key=SORT_KEYS[sort])
-    info_waiting = [r for r in runs if reviewable(r) and r["waiting_on"] == "Vendor"]
-    picked = next((r for r in queue + info_waiting if r["run_id"] == request.args.get("run")), queue[0] if queue else None)
+    picked = next((r for r in queue if r["run_id"] == request.args.get("run")), queue[0] if queue else None)
     return render_template("review.html", queue=queue, everyone=everyone, picked=picked,
-                           info_waiting=info_waiting, waiting=[r for r in runs if r["waiting_on"] == "Vendor"], decisions=list(reversed(store.load_decisions())),
+                           decisions=list(reversed(store.load_decisions())),
                            sorts=SORTS, sort=sort, q=request.args.get("q", ""), args={"sort": sort, "q": request.args.get("q", "")})
 
 
@@ -313,33 +309,31 @@ def dashboard():
     pct = lambda n: f"{n / total:.0%}" if total else "0%"
     count = lambda **kw: sum(all(r[k] == v for k, v in kw.items()) for r in runs)
     handled = sum(r["sub_status"] != NEEDS_REVIEW for r in runs)
-    metrics = [("Handled without a human", handled, pct(handled), "Approved, sent back to the vendor, or rejected by the rules alone"),
+    metrics = [("Handled without a human", handled, pct(handled), "Approved or rejected by the rules alone"),
                ("Approved automatically", count(status="Approved"), pct(count(status="Approved")), "The rules approved it with no human involved"),
                ("Sent to a reviewer", count(sub_status=NEEDS_REVIEW), pct(count(sub_status=NEEDS_REVIEW)), "The rules could not decide, so a reviewer must"),
-               ("Sent back to vendor", count(sub_status=VENDOR_TO_FIX), pct(count(sub_status=VENDOR_TO_FIX)), "The vendor can fix it and resubmit"),
-               ("Rejected", count(status="Rejected"), pct(count(status="Rejected")), "Identity red flags; not onboarded")]
-    live = [r for r in runs if r["final"] != "Replaced"]
+               ("Rejected", count(status="Rejected"), pct(count(status="Rejected")), "Mistakes, gaps or red flags: the vendor is told why and can apply again")]
     show = request.args.get("show", "All")
     history = [r for r in reversed(runs) if show in ("All", r["final"])]
     return render_template("dashboard.html", runs=runs, total=total, metrics=metrics, show=show, history=history,
-                           with_reviewer=count(waiting_on="Reviewer"), with_vendor=count(waiting_on="Vendor"),
-                           outcomes=Counter(outcome(r) for r in live).most_common(),
+                           with_reviewer=count(waiting_on="Reviewer"),
+                           outcomes=Counter(outcome(r) for r in runs).most_common(),
                            top=Counter(c for r in runs for c in set(r["codes"])).most_common(),
                            picked=next((r for r in runs if r["run_id"] == request.args.get("run")), None))
 
 
 @app.get("/messages")
 def messages_page():
-    return render_template("messages.html", threads=mailer.threads(), transport=mailer.transport_name(), fix_deadline_days=FIX_DEADLINE_DAYS)
+    return render_template("messages.html", threads=mailer.threads(), transport=mailer.transport_name())
 
 
 @app.get("/export.csv")
 def export_csv():
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["submission id", "vendor id", "submitted at", "company", "country", "status now", "automatic verdict", "decided by", "reasons", "replaces application"])
+    writer.writerow(["submission id", "vendor id", "submitted at", "company", "country", "status now", "automatic verdict", "decided by", "reasons"])
     for r in store.load_runs():
-        writer.writerow([r["run_id"], r["vendor_id"], r["ts"], r["company"], r["country"], outcome(r), system_verdict(r), r["decided_by"], reasons(r), r["parent_id"] or ""])
+        writer.writerow([r["run_id"], r["vendor_id"], r["ts"], r["company"], r["country"], outcome(r), system_verdict(r), r["decided_by"], reasons(r)])
     return Response(out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=vendor_onboarding_history.csv"})
 
 

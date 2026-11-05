@@ -2,15 +2,13 @@
 
 Every decision is made by fixed rules in code (`checks.py`, `decide.py`, `config.py`). No AI decides. The same submission always gets the same answer, and every finding names the rule that raised it.
 
-## 1. The four outcomes
+## 1. The three outcomes
 
 | Status | Meaning | Who acts next |
 |---|---|---|
 | **Approved** | No findings. A vendor ID is issued. | Nobody |
-| **Pending: Waiting for vendor** | Only things the vendor can correct (typo, missing field or document). The vendor gets a numbered list. | Vendor, within 7 days |
 | **Pending: Needs review** | A case that needs human judgment. The vendor is told it is under review. | Reviewer |
-| **Rejected** | Cannot be approved as submitted; a correction or a review would not change that. The vendor is told the reason. | Nobody (vendor may start a new application) |
-| *Replaced* | Final state of a waiting application when the same applicant files a new one. Nothing is carried over. | Nobody |
+| **Rejected** | This application cannot be approved as submitted: a rule rejects it, or it only has mistakes or gaps the vendor can correct. The vendor is told why (for mistakes and gaps, exactly what to correct). | Nobody. The vendor files a **new application** |
 
 ## 2. Finding levels
 
@@ -25,7 +23,9 @@ Every decision is made by fixed rules in code (`checks.py`, `decide.py`, `config
 1. No findings → **Approved**.
 2. Any "rejects on its own" finding (section 6), **or** two or more RED findings → **Rejected**.
 3. Any REVIEW finding (including a repeat-attempt finding, section 5.9) → **Pending: Needs review**.
-4. Otherwise → **Pending: Waiting for vendor**.
+4. Otherwise (only things the vendor can correct: a typo, a missing field or document) → **Rejected**, and the message lists exactly what to correct.
+
+There is no waiting state, no timer and no reminder: nothing is pending on the vendor's side. A corrected form is a new application, checked from scratch.
 
 ## 4. The nine stages (run in this order)
 
@@ -141,29 +141,24 @@ The vendor is only told "under review", never why. A reviewer sees the finding t
 | `LOOKALIKE_NAME` | Two names look identical but use look-alike characters |
 | `LOOKALIKE_OF_EXISTING_VENDOR` | Your company name could not be accepted |
 
-**Look-alike folding:** `0/O→o`, `1/I→l`, `5→s`, `8→b`, `2→z`, `6→g`. Honest typos are rarely made only of look-alike swaps, so these are rejected rather than sent back. Other rejection routes: two RED findings at once; no reply within 7 days; a reviewer's decision.
+**Look-alike folding:** `0/O→o`, `1/I→l`, `5→s`, `8→b`, `2→z`, `6→g`. Honest typos are rarely made only of look-alike swaps, so these are rejected rather than sent back. Other rejection routes: two RED findings at once; a reviewer's decision.
 
 The vendor is never told what matched a sanctions list, which other vendor was involved, or anything from our internal records.
 
-## 7. Time rules
-- Fix requests close after **7 days** with no reply (`Rejected`).
-- A reminder is sent after **3 days**.
-- A vendor who is sent back files a **new application**. It is checked from scratch (no pre-fill, nothing inherited); the earlier waiting application becomes *Replaced*.
-
-## 8. What the vendor is told
+## 7. What the vendor is told
 
 | Outcome | Message |
 |---|---|
 | Approved | "Your application is approved." |
 | Needs review | "Your application is under review. We will reach back to you if anything is needed." |
-| Waiting for vendor | "Please fix:" then a numbered list |
-| Rejected | "Your application is rejected because …" |
+| Rejected: only mistakes or gaps | "Your application is rejected because:" then a numbered list of what is wrong, then "Please correct these and submit a new application." |
+| Rejected: a rule | "Your application is rejected because <safe reason>. If this was a mistake, submit a new application." |
 
 A reviewer's decision produces the same wording automatically, built from what the checks found (`VENDOR_REASONS`, `VENDOR_DOCUMENTS`); the reviewer types nothing. All messages for one application go in the same mail thread ("Re: …").
 
-## 9. IDs
+## 8. IDs
 - **Submission ID**: random 8 hex characters (cannot be guessed or forged in sequence).
 - **Vendor ID**: `V` + country code + 6 hex, for example `VIN3FA9C2`. Issued to every applicant, one per applicant.
 
-## 10. Known limits
+## 9. Known limits
 Registry and sanctions are demo data. Bank-account ownership is not verified with a bank. Document contents are not read, so a forged document of the right type passes that stage. India, US and Germany only; one bank account per submission. No document expiry tracking. Mail is simulated unless Brevo is configured. SQLite resets on free hosting.

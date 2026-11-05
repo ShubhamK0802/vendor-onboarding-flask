@@ -3,10 +3,10 @@ import uuid
 import json
 import sqlite3
 from contextlib import closing
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from checks import company_key
-from config import FIX_DEADLINE_DAYS, NEEDS_REVIEW, VENDORS_ON_FILE
+from config import NEEDS_REVIEW, VENDORS_ON_FILE
 
 DB_PATH = "onboarding.db"
 SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "entity_type", "country", "bank_code", "mobile", "email"]
@@ -58,27 +58,27 @@ def make_snapshot(submission):
     return {**{f: submission.get(f) for f in SNAPSHOT_FIELDS}, "bank_account_number": mask_account(submission.get("bank_account_number"))}
 
 
-def save_run(submission, decision, seconds, parent_id=None, files=None, same_as=None):
+def save_run(submission, decision, seconds, files=None, same_as=None):
     """files: {slot: (filename, bytes)} - the uploaded documents, kept so a reviewer can open them."""
     run_id, key = uuid.uuid4().hex[:8], company_key(submission)  # random, so nobody can guess another submission's ID
     with closing(connect()) as conn, conn:
         conn.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
             run_id, now(), submission.get("company_name"), submission.get("country"), decision["status"], decision["sub_status"],
-            decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
+            decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), None))  # parent_id is no longer used: the column stays so existing databases keep working
         conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
-        vendor = vendor_for(conn, submission, key, parent_id or same_as)  # same_as: an earlier run by the same applicant (any status)
+        vendor = vendor_for(conn, submission, key, same_as)  # same_as: an earlier run by the same applicant (any status)
         conn.execute("INSERT INTO run_vendor VALUES (?,?)", (run_id, vendor))
         if key:
             conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (key, vendor))
     return run_id
 
 
-def vendor_for(conn, submission, key, parent_id):
-    """Every applicant gets a vendor ID on its first submission. A company already known by its tax identity keeps its ID; a corrected
-    resubmission keeps the ID of the submission it replaces (even if the tax ID was the typo); otherwise a new ID."""
+def vendor_for(conn, submission, key, same_as):
+    """Every applicant gets a vendor ID on its first submission. A company already known by its tax identity keeps its ID, and so does a new
+    application by the same applicant (even if the tax ID was the typo, or the earlier one was rejected); otherwise a new ID."""
     known = key and conn.execute("SELECT vendor_id FROM vendor_ids WHERE company_key=?", (key,)).fetchone()
-    parent = parent_id and conn.execute("SELECT vendor_id FROM run_vendor WHERE run_id=?", (parent_id,)).fetchone()
-    return (known or parent or {"vendor_id": new_vendor_id(submission.get("country"))})["vendor_id"]
+    earlier = same_as and conn.execute("SELECT vendor_id FROM run_vendor WHERE run_id=?", (same_as,)).fetchone()
+    return (known or earlier or {"vendor_id": new_vendor_id(submission.get("country"))})["vendor_id"]
 
 
 def save_decision(run_id, decision, note, reviewer):
@@ -126,35 +126,28 @@ def reset():
 
 
 def final_state(run):
-    """What a run is NOW, after reviewer decisions, vendor resubmissions and the time limit (the rules' own verdict stays in status/sub_status)."""
+    """What a run is NOW, after a reviewer's decision (the rules' own verdict stays in status/sub_status)."""
     d = run["decision_by"]
-    if run["superseded_by"]:
-        return {"final": "Replaced", "final_sub": f"by a newer application {run['superseded_by']}", "waiting_on": "-"}
     if d and d["decision"] in ("Approved", "Rejected"):
         return {"final": d["decision"], "final_sub": f"{d['decision']} by reviewer", "waiting_on": "-"}
-    if d:
-        state, since = {"final": "Pending", "final_sub": "Info requested from vendor", "waiting_on": "Vendor"}, d["ts"]
-    elif run["status"] == "Pending":
-        state, since = {"final": "Pending", "final_sub": run["sub_status"], "waiting_on": "Reviewer" if run["sub_status"] == NEEDS_REVIEW else "Vendor"}, run["ts"]
-    else:
-        return {"final": run["status"], "final_sub": None, "waiting_on": "-"}
-    if state["waiting_on"] == "Vendor" and datetime.now() - datetime.fromisoformat(since) > timedelta(days=FIX_DEADLINE_DAYS):  # nobody answered: the run closes itself
-        return {"final": "Rejected", "final_sub": f"Closed: no reply in {FIX_DEADLINE_DAYS} days", "waiting_on": "-"}
-    return state
+    if d:  # information requested: the vendor cannot add to this application, so it is closed and the vendor applies again
+        return {"final": "Rejected", "final_sub": "Information needed by reviewer", "waiting_on": "-"}
+    if run["status"] == "Pending":
+        return {"final": "Pending", "final_sub": run["sub_status"], "waiting_on": "Reviewer"}
+    return {"final": run["status"], "final_sub": None, "waiting_on": "-"}
 
 
 def load_runs():
     """Oldest first. Each run carries its parsed decision, latest reviewer decision, and final state."""
     runs = query("SELECT * FROM runs ORDER BY ts, rowid")
     latest = {d["run_id"]: d for d in load_decisions()}
-    child = {r["parent_id"]: r["run_id"] for r in runs if r["parent_id"]}
     vendor_ids = {v["run_id"]: v["vendor_id"] for v in query("SELECT * FROM run_vendor")}
     for run in runs:
         run.update(decision=json.loads(run["decision"]), payload=json.loads(run["payload"]), snapshot=json.loads(run["snapshot"]))
         run["vendor_id"] = vendor_ids.get(run["run_id"], "")
         run["findings"] = run["decision"].get("findings", [])
         run["codes"] = [f["code"] for f in run["findings"]]
-        run.update(decision_by=latest.get(run["run_id"]), superseded_by=child.get(run["run_id"]))
+        run.update(decision_by=latest.get(run["run_id"]))
         run.update(final_state(run))
         run["decided_by"] = run["decision_by"]["reviewer"] if run["decision_by"] and run["decision_by"]["decision"] in ("Approved", "Rejected") else "Automatic"
     return runs

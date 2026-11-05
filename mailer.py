@@ -10,13 +10,13 @@ import time
 import traceback
 import urllib.request
 from contextlib import closing
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import store
-from config import FIX_DEADLINE_DAYS, NEEDS_REVIEW, REMINDER_DAYS, VENDOR_DOCUMENTS, VENDOR_REASONS, VENDOR_TO_FIX
+from config import NEEDS_REVIEW, VENDOR_DOCUMENTS, VENDOR_REASONS
 
-MAX_ATTEMPTS, LOOP_SECONDS, SWEEP_SECONDS = 3, 3, 300
-HEADLINES = {("Approved", None): "Approved", ("Pending", NEEDS_REVIEW): "Under review", ("Pending", VENDOR_TO_FIX): "Action needed", ("Rejected", None): "Rejected"}
+MAX_ATTEMPTS, LOOP_SECONDS = 3, 3
+HEADLINES = {("Approved", None): "Approved", ("Pending", NEEDS_REVIEW): "Under review", ("Rejected", None): "Rejected"}
 STATUS = {"queued": "Queued", "failed": f"Failed after {MAX_ATTEMPTS} tries", "noaddr": "Not sent: no email address"}
 
 
@@ -47,10 +47,8 @@ def get_run(run_id):
 
 
 def enqueue(conn, run, event, headline, body):
-    """Idempotent: one message per (submission, event). The subject belongs to the thread (the first application), with Re: after the first mail."""
+    """Idempotent: one message per (submission, event). One thread per application: Re: after its first mail."""
     root = run["run_id"]
-    while parent := conn.execute("SELECT parent_id FROM runs WHERE run_id=?", (root,)).fetchone()["parent_id"]:
-        root = parent
     to = (run["payload"].get("email") or "").strip()
     subject = f"Your vendor application ({root})"
     if conn.execute("SELECT COUNT(*) FROM outbox WHERE thread_id=?", (root,)).fetchone()[0]:
@@ -70,22 +68,6 @@ def enqueue_decision(run_id, decision_id):
     headline, body = decision_mail(run, decision)
     with closing(store.connect()) as conn, conn:
         enqueue(conn, run, f"decision:{decision_id}", headline, body)
-
-
-def sweep():
-    """Reminders and closing notices. Safe to run as often as you like: each is queued once."""
-    for run in store.load_runs():
-        decided = run["decision_by"]
-        since = datetime.fromisoformat((decided or run)["ts"])
-        if run["final"] == "Rejected" and (run["final_sub"] or "").startswith("Closed"):
-            mail = ("closed", "Rejected", f"Your application is rejected because we did not hear back within {FIX_DEADLINE_DAYS} days. If this was a mistake, submit a new application.")
-        elif run["waiting_on"] == "Vendor" and datetime.now() >= since + timedelta(days=REMINDER_DAYS):
-            latest = decision_mail(run, decided["decision"])[1] if decided else run["decision"]["vendor_message"]
-            mail = ("reminder", "Reminder", "Reminder: your application is still waiting for you.\n" + latest)
-        else:
-            continue
-        with closing(store.connect()) as conn, conn:
-            enqueue(conn, run, *mail)
 
 
 # ---------------------------------------------------------------- sending
@@ -157,21 +139,16 @@ _started = False
 
 
 def start_background():
-    """One worker thread: sends what is queued every few seconds, and checks for reminders and closing notices every few minutes.
-    ponytail: on a free host the app sleeps when idle, so reminders go out when it wakes (they catch up); a paid always-on host sends them on time."""
+    """One worker thread: sends what is queued every few seconds."""
     global _started
     if _started:
         return
     _started = True
 
     def loop():
-        last_sweep = 0.0
         while True:
             try:
                 deliver_queued()
-                if time.monotonic() - last_sweep >= SWEEP_SECONDS:
-                    sweep()
-                    last_sweep = time.monotonic()
             except Exception:
                 traceback.print_exc()  # a failed pass is simply retried on the next one
             time.sleep(LOOP_SECONDS)

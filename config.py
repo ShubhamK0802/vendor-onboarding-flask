@@ -145,9 +145,8 @@ EVIDENCE_FIELDS = {
 # Finding severity: FIX = vendor can fix it, REVIEW = needs human judgment, RED = identity red flag
 FIX, REVIEW, RED = 1, 2, 3
 
-# The two reasons a run can be Pending (status names shown everywhere).
+# The only reason a run is Pending: a person must decide (status name shown everywhere).
 NEEDS_REVIEW = "Needs review"
-VENDOR_TO_FIX = "Waiting for vendor"
 
 # Vendors already onboarded before this system started: the duplicate check compares every submission against them.
 VENDORS_ON_FILE = [{
@@ -161,12 +160,12 @@ VENDORS_ON_FILE = [{
 }]
 
 # ---- When is a run Rejected? (the status definitions, in code)
-# Rejected = cannot be approved as submitted, and neither a correction nor a review would change that. It is reached by:
+# Rejected = this application cannot be approved as submitted. The vendor is told why (and, for mistakes and gaps, exactly what to correct) and files a
+# NEW application: nothing is pending on the vendor's side, so there is no waiting state and no timer. It is reached by:
 #   1. a finding that rejects on its own (below), with the reason the VENDOR is told (never a fraud accusation);
 #   2. two or more identity contradictions at once, which a typo cannot explain;
-#   3. the same problem still there after the vendor was asked to fix it (a resubmission repeating a finding);
-#   4. the vendor not answering within FIX_DEADLINE_DAYS (the run closes by itself);
-#   5. a reviewer's decision.
+#   3. only mistakes or gaps the vendor can correct (the message lists them);
+#   4. a reviewer's decision (including asking for more information: the vendor then files a new application).
 REJECT_ON_ITS_OWN = {
     "DUPLICATE_APPLICATION": "your company is already onboarded with exactly these details",
     "SANCTIONS_MATCH": "we are unable to onboard this company",  # deliberately vague: never tell a listed party what matched
@@ -181,14 +180,12 @@ REJECT_ON_ITS_OWN = {
 }
 # Countries under comprehensive sanctions (simplified: a real deployment uses the current official lists).
 EMBARGOED_COUNTRIES = {"KP", "IR", "SY", "CU"}
-FIX_DEADLINE_DAYS = 7
-REMINDER_DAYS = 3
 # Repeat attempts: a vendor whose application is sent back files a NEW application. Applications are linked by a shared identifier, a near-identical
 # name or a re-used file. From the 4th linked attempt, or when an identity field changes that nobody asked to be changed, a person decides.
 ATTEMPTS_BEFORE_REVIEW = 3  # earlier linked attempts allowed before the next one goes to a reviewer
 ATTEMPT_WINDOW_DAYS = 30
 NAME_LINK_SCORE = 92  # company names this similar (0-100) count as the same applicant
-RATE_LIMIT_PER_HOUR = 30  # submissions per source (IP address) per hour  # a fix request that is still unanswered after this many days gets a reminder
+RATE_LIMIT_PER_HOUR = 30  # submissions per source (IP address) per hour
 
 # What a vendor is told when a REVIEWER decides. Worked out from what the checks found, so the reviewer types nothing,
 # and nothing about other vendors or our internal records is revealed.

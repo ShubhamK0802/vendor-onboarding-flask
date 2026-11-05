@@ -9,18 +9,15 @@ flowchart TD
     A[Vendor submits form or JSON] --> B[Pipeline: 9 stages]
     B --> C{Decision rule}
     C -->|no findings| D[Approved + vendor ID]
-    C -->|only fixable findings| E[Pending: Waiting for vendor]
+    C -->|only mistakes or gaps the vendor can correct| G
     C -->|needs judgment| F[Pending: Needs review]
     C -->|rejects on its own / 2 red flags| G[Rejected]
-    E -->|vendor files a new application within 7 days| A
-    E -->|no reply in 7 days| G
-    E -->|3 days, no reply| R[Reminder mail]
+    G -->|vendor corrects and files a new application| A
     F --> H[Reviewer takes the case]
     H -->|approve| D
     H -->|reject| G
-    H -->|ask for info| E
+    H -->|ask for info| G
     D --> M[Mail to vendor]
-    E --> M
     F --> M
     G --> M
 ```
@@ -44,7 +41,7 @@ sequenceDiagram
     participant S as System
     participant R as Reviewer
     V->>S: Application A
-    S-->>V: Waiting for vendor: please fix 1..n (mail)
+    S-->>V: Rejected because 1..n, please correct and apply again (mail)
     V->>S: New application B (nothing pre-filled, nothing carried over)
     S->>S: Check B from scratch, then count linked earlier attempts
     alt clean and fewer than 4 attempts, no unasked identity change
@@ -53,7 +50,6 @@ sequenceDiagram
         S->>R: Needs review (attempts shown)
         S-->>V: Under review
     end
-    S->>S: Mark A as Replaced
 ```
 
 Attempts are linked by company ID, bank account, phone, email, a near-identical company name, or the same uploaded file, within 30 days. A change to a field the earlier attempt flagged is expected and not an identity change.
@@ -67,7 +63,7 @@ flowchart TD
     V --> X{Decide}
     X -->|Approve| AP[Approved + vendor ID]
     X -->|Reject| RJ[Rejected]
-    X -->|Request info| RI[Pending: Waiting for vendor]
+    X -->|Request info| RI[Rejected: vendor files a new application]
     V -->|Give back| Q
 ```
 

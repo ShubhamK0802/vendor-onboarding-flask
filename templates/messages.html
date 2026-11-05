@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
 <h1>Messages to vendors</h1>
-<p class="muted">Each application is one email thread. Every update is saved in an outbox and sent automatically by a background worker: the verdict first, then the reviewer's outcome (approved, rejected with the reason, or the documents we need), a reminder {{ reminder_days }} days after an unanswered fix request, and a closing notice after {{ fix_deadline_days }} days. Click a thread to read it.</p>
+<p class="muted">Each application is one email thread. Every update is saved in an outbox and sent automatically by a background worker: the verdict first, then the reviewer's outcome in the same thread (approved, rejected with the reason, or the documents we need). Click a thread to read it.</p>
 <p><b>Mail service:</b> {{ transport }}</p>
 {% if not threads %}
 <div class="card empty">No messages yet. They appear as submissions are processed.</div>

@@ -3,7 +3,7 @@
 ## Process (what the Zamp brief asked for)
 - Takes a vendor submission by **form** (with document uploads), **JSON file**, or one of **7 built-in samples**.
 - Runs **9 rule-based stages**; the run page shows each stage live as it completes.
-- Four clear outcomes: Approved, Pending (Waiting for vendor / Needs review), Rejected.
+- Three clear outcomes: Approved, Pending (needs review: only a person can decide), Rejected (with the reasons, and for mistakes exactly what to correct).
 - **Live run view** and **dashboard** with history and CSV export.
 - **Edge cases shown by samples** (one clean + six): incomplete form with wrong document; tax ID wrong for the country; name nearly matches bank holder; identity fields contradict; existing vendor changes bank account; look-alike characters in a name. Each fixable one has a **corrected sample** to prove that sending the right data is approved.
 
@@ -19,24 +19,23 @@
 ## Vendor experience
 - Vendor message only on the Onboard page, in plain wording.
 - Numbered "Please fix" list; reasons never reveal internal records or what matched a sanctions list.
-- A vendor who is sent back files a **new application**, checked from scratch: no resubmission link, no pre-fill, nothing carried over. The earlier waiting one becomes *Replaced*.
+- A vendor who is sent back files a **new application**, checked from scratch: no resubmission link, no pre-fill, nothing carried over. Nothing waits on the vendor: no timer, no reminder mails.
 - Random submission IDs and a vendor ID for every applicant.
 
 ## Reviewer experience
 - Queue of cases that need review; **take** / **give back** so two people never work one case.
 - Evidence highlights the exact fields behind each finding.
 - Download the vendor's uploaded documents.
-- Decide: approve, reject, or request information. The vendor mail is written automatically.
+- Decide: approve, reject, or request information (which closes the application as rejected; the vendor files a new one). The vendor mail is written automatically.
 
 ## Communication
 - **Outbox and background sender**: queued → sent (simulated) / sent (Brevo) / failed / no address.
 - One mail thread per application (first mail, then "Re: …").
-- Reminder after 3 days; automatic close after 7 days.
 - Real sending via Brevo only to allow-listed addresses.
 
 ## Engineering
 - Flask + SQLite + rapidfuzz; gunicorn for hosting; Render blueprint included.
-- 168 automated checks (`python run_tests.py`), including a test that fills the form with the sample PDFs.
+- 192 automated checks (`python run_tests.py`), including a test that fills the form with the sample PDFs.
 - Rules in plain config (`config.py`), no AI in the decision, every finding has a code.
 - Form-submission kit (`demo_form_submission/`): sample JSON and four sample PDFs.
 

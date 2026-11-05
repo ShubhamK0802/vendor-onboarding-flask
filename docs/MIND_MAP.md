@@ -34,12 +34,11 @@ mindmap
     Decision
       Approved
       Pending
-        Waiting for vendor
         Needs review
       Rejected
         Rejects on its own
         Two red flags
-        7 days silent
+        Only mistakes or gaps
     Fraud defences
       Look-alike characters
       Hidden characters
@@ -58,10 +57,9 @@ mindmap
       Outbox
       Background sender
       One thread
-      Reminder 3 days
     Evidence
       Dashboard
       CSV export
-      168 tests
+      192 tests
       Demo kit
 ```

@@ -4,18 +4,15 @@
     A[Vendor submits form or JSON] --> B[Pipeline: 9 stages]
     B --> C{Decision rule}
     C -->|no findings| D[Approved + vendor ID]
-    C -->|only fixable findings| E[Pending: Waiting for vendor]
+    C -->|only mistakes or gaps the vendor can correct| G
     C -->|needs judgment| F[Pending: Needs review]
     C -->|rejects on its own / 2 red flags| G[Rejected]
-    E -->|vendor files a new application within 7 days| A
-    E -->|no reply in 7 days| G
-    E -->|3 days, no reply| R[Reminder mail]
+    G -->|vendor corrects and files a new application| A
     F --> H[Reviewer takes the case]
     H -->|approve| D
     H -->|reject| G
-    H -->|ask for info| E
+    H -->|ask for info| G
     D --> M[Mail to vendor]
-    E --> M
     F --> M
     G --> M
 </pre><h2>2. The pipeline</h2><pre class="mermaid">flowchart LR
@@ -27,7 +24,7 @@
     participant S as System
     participant R as Reviewer
     V->>S: Application A
-    S-->>V: Waiting for vendor: please fix 1..n (mail)
+    S-->>V: Rejected because 1..n, please correct and apply again (mail)
     V->>S: New application B (nothing pre-filled, nothing carried over)
     S->>S: Check B from scratch, then count linked earlier attempts
     alt clean and fewer than 4 attempts, no unasked identity change
@@ -36,14 +33,13 @@
         S->>R: Needs review (attempts shown)
         S-->>V: Under review
     end
-    S->>S: Mark A as Replaced
 </pre><h2>4. Reviewer desk</h2><pre class="mermaid">flowchart TD
     Q[Queue: Needs review] --> T[Take: claimed by one reviewer]
     T --> V[Read findings, evidence, documents]
     V --> X{Decide}
     X -->|Approve| AP[Approved + vendor ID]
     X -->|Reject| RJ[Rejected]
-    X -->|Request info| RI[Pending: Waiting for vendor]
+    X -->|Request info| RI[Rejected: vendor files a new application]
     V -->|Give back| Q
 </pre><h2>5. Mail</h2><pre class="mermaid">flowchart LR
     E[Decision made] --> O[Outbox: queued]
@@ -85,12 +81,11 @@
     Decision
       Approved
       Pending
-        Waiting for vendor
         Needs review
       Rejected
         Rejects on its own
         Two red flags
-        7 days silent
+        Only mistakes or gaps
     Fraud defences
       Look-alike characters
       Hidden characters
@@ -109,10 +104,9 @@
       Outbox
       Background sender
       One thread
-      Reminder 3 days
     Evidence
       Dashboard
       CSV export
-      168 tests
+      192 tests
       Demo kit
 </pre><script type="module">import m from "https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs";m.initialize({startOnLoad:true});</script>

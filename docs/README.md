@@ -8,5 +8,5 @@
 | [MIND_MAP.md](MIND_MAP.md) | One-page mind map |
 | [overview.html](overview.html) | All diagrams rendered in a browser (needs internet for the Mermaid script); good for screenshots in the demo video |
 
-Related: `../README.md` (how to run), `../demo_form_submission/` (sample JSON and PDFs), `../run_tests.py` (156 checks).
+Related: `../README.md` (how to run), `../demo_form_submission/` (sample JSON and PDFs), `../run_tests.py` (192 checks).
 The rule book matches `config.py`, `checks.py` and `decide.py` (rules v5.0); update it when a rule changes.

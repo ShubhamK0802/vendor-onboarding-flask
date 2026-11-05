@@ -4,7 +4,6 @@
   {% if run.decision_by %}
   <p><b>Reviewer decision:</b> {{ run.decision_by.decision }} by {{ run.decision_by.reviewer }} at {{ run.decision_by.ts.replace('T', ' ') }}. Reason: {{ run.decision_by.note }}</p>
   {% endif %}
-  {% if run.parent_id %}<p class="muted">Replaces earlier application {{ run.parent_id }}</p>{% endif %}
 
   {% set sent = submitted(run) %}
   <details>

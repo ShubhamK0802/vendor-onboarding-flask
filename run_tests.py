@@ -26,9 +26,9 @@ def check(ok, name, detail=""):
         failed.append(name)
 
 
-def submit(data, parent_id=None, files=None):
+def submit(data, same_as=None, files=None):
     """What the app does for one submission: check against everything known, then save."""
-    return store.save_run(data, run_pipeline(data, store.known_vendors(store.load_runs())), 0.01, parent_id=parent_id, files=files)
+    return store.save_run(data, run_pipeline(data, store.known_vendors(store.load_runs())), 0.01, files=files, same_as=same_as)
 
 
 def run(run_id):
@@ -81,7 +81,7 @@ check(run(shared)["waiting_on"] == "Reviewer" and "DUPLICATE_BANK_ACCOUNT" in ru
 vid = run(shared)["vendor_id"]
 check(re.fullmatch(r"VIN[0-9A-F]{6}", vid), "vendor ID: every applicant gets one on its first submission, approved or not")
 store.save_decision(shared, "Info requested", "Please send a bank letter", "Asha")
-check(run(shared)["waiting_on"] == "Vendor", "info requested: leaves the reviewer queue but stays visible, waiting on the vendor")
+check(run(shared)["final"] == "Rejected" and run(shared)["waiting_on"] == "-", "info requested: closes the run as rejected (the vendor files a new application), nothing waits on the vendor")
 store.save_decision(shared, "Approved", "Bank letter received", "Asha")
 check(run(shared)["vendor_id"] == vid, "vendor ID: approval does not change it")
 check(run(shared)["final"] == "Approved" and run(shared)["decided_by"] == "Asha", "reviewer approval changes the final status and records who")
@@ -89,9 +89,7 @@ check(any(v["company_name"] == "Orion Lookalike Traders" for v in store.known_ve
 
 bad = copy.deepcopy(INDIA)
 bad.update(tax_id="29ABCCA1234D1", company_name="Fresh Vendor Pvt Ltd", pan="QWERT1234Y", bank_account_name="Fresh Vendor Pvt Ltd", bank_account_number="11122233344455")
-pending = submit(bad)
-child = submit(bad, parent_id=pending, files={"tax_document": ("w9.pdf", b"%PDF-1.4 test")})
-check(run(pending)["final"] == "Replaced" and run(pending)["superseded_by"] == child, "resubmission supersedes the earlier run")
+child = submit(bad, files={"tax_document": ("w9.pdf", b"%PDF-1.4 test")})
 check(store.get_docs(child)[0]["data"] == b"%PDF-1.4 test", "uploaded document is stored and retrievable")
 check(store.mask_account("50100234567891") == "****7891" and "50100234567891" not in str(run(first)["snapshot"]), "account numbers are masked in what the UI reads")
 
@@ -122,7 +120,7 @@ check(rejected(dict(INDIA, tax_id=INDIA["tax_id"][:5] + "\u200b" + INDIA["tax_id
       and rejected(dict(INDIA, tax_id="".join(chr(ord(c) + 0xFEE0) if c.isdigit() else c for c in INDIA["tax_id"])), "HIDDEN_CHARACTERS"), "look-alikes: an invisible character or full-width digits in an ID are rejected")
 check(rejected(dict(google, bank_account_number="7200012345670O"), "LOOKALIKE_CHARACTERS") and rejected(dict(american("Redwood Supply LLC", "84-2736195", "4400555111"), bank_code="O21000021"), "LOOKALIKE_CHARACTERS"),
       "look-alikes: a letter O in a bank account number or routing number is rejected, so it cannot dodge the duplicate-account check")
-check(verdict(dict(google, bank_account_number="12345"))[:3] == ("Pending", "Waiting for vendor", ["BAD_ACCOUNT_FORMAT"]), "look-alikes: a bank account of the wrong length is an ordinary mistake, sent back to the vendor")
+check(verdict(dict(google, bank_account_number="12345"))[:3] == ("Rejected", None, ["BAD_ACCOUNT_FORMAT"]), "look-alikes: a bank account of the wrong length is an ordinary mistake, sent back to the vendor")
 check(rejected(indian("N0rthern Star Arms Trading Limited", "NORCN3459R", "72000123456705"), "SANCTIONS_MATCH"), "look-alikes: a look-alike spelling of a watchlist name does not escape the screening")
 check(rejected(indian("Apex G1obal Private Limited", "APXCG9876A", "73100123456703"), "LOOKALIKE_OF_EXISTING_VENDOR", history=[APEX]), "look-alikes: a name that looks like an onboarded vendor's is rejected")
 check(rejected(dict(INDIA, company_name="Apex G1obal Private Limited", bank_account_name="Apex G1obal Private Limited"), "LOOKALIKE_NAME"), "look-alikes: a name that differs from the tax registry only in look-alikes is rejected")
@@ -138,34 +136,30 @@ check(re.fullmatch(r"VIN[0-9A-F]{6}", run(never)["vendor_id"]), "vendor ID: a se
 from store import new_vendor_id  # noqa: E402
 check(all(re.fullmatch(rf"V{cc}[0-9A-F]{{6}}", new_vendor_id(cc)) for cc in ("IN", "US", "DE")) and re.fullmatch(r"VBR[0-9A-F]{6}", new_vendor_id("BR")) and re.fullmatch(r"VXX[0-9A-F]{6}", new_vendor_id(None)), "vendor ID: V + the applicant's country (XX if unknown) + 6 letters or digits, no special characters")
 typo = submit(american("Zenith Fabricators LLC", "42958371", "5100999111"))
-fixed = submit(american("Zenith Fabricators LLC", "04-2958371", "5100999111"), parent_id=typo)
+fixed = submit(american("Zenith Fabricators LLC", "04-2958371", "5100999111"), same_as=typo)
 later = submit(american("Zenith Fabricators LLC", "04-2958371", "5100999111"))
-check(run(typo)["vendor_id"].startswith("VUS") and run(fixed)["vendor_id"] == run(typo)["vendor_id"] == run(later)["vendor_id"], "vendor ID: a corrected resubmission keeps the ID of the submission it replaces, and so does the company's next application")
+check(run(typo)["vendor_id"].startswith("VUS") and run(fixed)["vendor_id"] == run(typo)["vendor_id"] == run(later)["vendor_id"], "vendor ID: a new application by the same applicant keeps the ID of the earlier one, and so does the company's next application")
 keyless = dict(quartz, pan="")  # no PAN, so no company key to recognise it by
 first_k, other_k = submit(keyless), submit(dict(keyless, company_name="Other Mills Private Limited"))
-again_k = submit(keyless, parent_id=first_k)
-check(run(first_k)["vendor_id"] and run(first_k)["vendor_id"] != run(other_k)["vendor_id"] and run(again_k)["vendor_id"] == run(first_k)["vendor_id"], "vendor ID: even with no tax identity every applicant gets an ID, and a linked resubmission keeps it")
+again_k = submit(keyless, same_as=first_k)
+check(run(first_k)["vendor_id"] and run(first_k)["vendor_id"] != run(other_k)["vendor_id"] and run(again_k)["vendor_id"] == run(first_k)["vendor_id"], "vendor ID: even with no tax identity every applicant gets an ID, and a linked new application keeps it")
 
 # ---- the vendor message is short and to the point
 two = run_pipeline(dict(quartz, bank_account_name="Zenith Traders", documents=dict(quartz["documents"], voided_cheque=None)), [])["vendor_message"]
-check(two == "Please fix:\n1. Upload a voided cheque or passbook page\n2. Use a bank account in your company's name, or attach a signed authorisation letter\nThen send us a new application with these corrected." and len(two) < 200, "vendor message: two fixes are a short numbered list")
-check(run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"].startswith("Please fix:"), "vendor message: starts with what to do")
+check(two == "Your application is rejected because:\n1. Upload a voided cheque or passbook page\n2. Use a bank account in your company's name, or attach a signed authorisation letter\nPlease correct these and submit a new application." and len(two) < 220, "vendor message: two fixes are a short numbered list, then what to do")
+check(run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"].startswith("Your application is rejected because"), "vendor message: starts with the rejection and its reason")
 
-check(outcome(dict(quartz, tax_id="123456789")) == ("Pending", "Waiting for vendor"), "status definitions: one contradiction alone (tax ID of another country) is a mistake the vendor can fix")
+check(outcome(dict(quartz, tax_id="123456789")) == ("Rejected", None) and "submit a new application" in run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"], "status definitions: one contradiction alone (tax ID of another country) is rejected, and the vendor is told to correct it and apply again")
 check(outcome(dict(quartz, pan="ZZZZZ9999Z")) == ("Rejected", None), "status definitions: two contradictions at once are rejected")
 near_miss = dict(quartz, bank_account_name="Quartz Mill Private Limited")
 first_try = run_pipeline(near_miss, [])
-check((first_try["status"], first_try["sub_status"]) == ("Pending", "Waiting for vendor"), "status definitions: a near-miss name is first a vendor fix")
+check((first_try["status"], first_try["sub_status"]) == ("Rejected", None), "status definitions: a near-miss name is rejected with what to correct")
 check(outcome(quartz) == ("Approved", None), "status definitions: a vendor who really fixes it (a new, clean application) is approved")
 mismatch = dict(quartz, bank_account_name="Zenith Traders")
-check(run_pipeline(mismatch, [])["sub_status"] == "Waiting for vendor", "status definitions: a third-party bank account is first sent back to the vendor")
+check(run_pipeline(mismatch, [])["status"] == "Rejected", "status definitions: a third-party bank account is rejected with what to correct")
 
-stale = submit(dict(quartz, tax_id=quartz["tax_id"][:13]))
-recent = submit(dict(quartz, tax_id=quartz["tax_id"][:12]))
-with store.connect() as conn:
-    conn.execute("UPDATE runs SET ts=? WHERE run_id=?", ((datetime.now() - timedelta(days=8)).isoformat(timespec="seconds"), stale))
-check(run(stale)["final"] == "Rejected" and "Closed" in run(stale)["final_sub"] and run(stale)["waiting_on"] == "-", "status definitions: a fix request nobody answers for 8 days closes as rejected")
-check(run(recent)["final"] == "Pending" and run(recent)["waiting_on"] == "Vendor", "status definitions: a fresh fix request stays open")
+fixable = submit(dict(quartz, tax_id=quartz["tax_id"][:13]))
+check(run(fixable)["final"] == "Rejected" and run(fixable)["waiting_on"] == "-" and "Waiting" not in str(run(fixable)["final_sub"]), "status definitions: a mistake the vendor can correct is rejected right away: nothing waits and no timer runs")
 
 # ---- verification: placeholders, registry, sanctions, embargoes, the EU check
 import checks  # noqa: E402
@@ -201,8 +195,8 @@ check(store.load_runs() == [] and store.load_decisions() == [] and len(store.kno
 by_case = {case[0]: case for case in CASES}
 shown = sorted(f[:-5] for f in os.listdir("sample_inputs"))
 check(shown == sorted(file for file, _ in SAMPLES + CORRECTED) and len(SAMPLES) == 7 and len(CORRECTED) == 5, "samples: seven samples and five corrected versions", f"-> {shown}")
-check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Pending", "Waiting for vendor"), ("Pending", "Waiting for vendor"), ("Pending", "Waiting for vendor"), ("Rejected", None), ("Pending", "Needs review"), ("Rejected", None)],
-      "samples: they cover every outcome (approved, vendor to fix, rejected, needs review)")
+check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Rejected", None), ("Rejected", None), ("Rejected", None), ("Rejected", None), ("Pending", "Needs review"), ("Rejected", None)],
+      "samples: they cover every outcome (approved, rejected for mistakes, rejected by a rule, needs review)")
 for file, case in SAMPLES + CORRECTED:
     with open(f"sample_inputs/{file}.json", encoding="utf-8") as handle:
         check(json.load(handle) == json.loads(json.dumps(by_case[case][1])), f"samples: {file} is the tested case {case}")
@@ -259,12 +253,11 @@ check(b"Form Vendor LLC" in client.get("/dashboard").data and b"Handled without 
 client.post("/reset")
 check(b"No submissions yet" in client.get("/dashboard").data, "web: reset empties the dashboard again")
 
-# a near-miss name: the vendor is sent back, and files a new application
+# a near-miss name: rejected with what to correct; the vendor files a new application
 first = run_case("09_fix_near_miss_name")["run_id"]
-check(next(r for r in store.load_runs() if r["run_id"] == first)["final"] == "Pending" and b"match your company name exactly" in client.get(f"/run/{first}").data and b"send us a new application" in client.get(f"/run/{first}").data,
-      "web: a near-miss name is sent back to the vendor, who is told to send a new application")
-again = run_case("09_fix_near_miss_name")["run_id"]
-check(run(first)["final"] == "Replaced" and run(first)["superseded_by"] == again and run(again)["parent_id"] == first, "web: a new application from the same applicant closes the earlier waiting one as replaced")
+check(run(first)["final"] == "Rejected" and b"match your company name exactly" in client.get(f"/run/{first}").data and b"Please correct this and submit a new application." in client.get(f"/run/{first}").data,
+      "web: a near-miss name is rejected, and the vendor is told what to correct and to submit a new application")
+check(b"Waiting for vendor" not in client.get("/dashboard").data and b"With the vendor now" not in client.get("/dashboard").data, "web: the dashboard has no waiting-for-vendor state")
 
 # ---- reviewer desk: order, filters, taking a submission, next-up, info-requested runs ----
 contact = run_case("14_review_shared_mobile_number")["run_id"]  # submitted first
@@ -292,10 +285,10 @@ client.post(f"/review/{contact}/release", data={"reviewer": "asha"})
 check(b"Being handled by" not in client.get(f"/review?run={contact}").data, "reviewer desk: giving it back frees it (names are not case-sensitive)")
 
 page = client.post(f"/review/{clash}", data={"reviewer": "Asha", "decision": "Info requested", "note": "Send a bank letter", "sort": "oldest"}, follow_redirects=True).data
-check(f">{contact}</a>" in page.decode() and f"run={clash}" in page.decode(), "reviewer desk: after a decision the next submission opens, and an info-requested run stays reachable")
-check(store.load_runs() and next(r for r in store.load_runs() if r["run_id"] == clash)["waiting_on"] == "Vendor", "reviewer desk: info requested moves the run to waiting on the vendor")
+check(f">{contact}</a>" in page.decode(), "reviewer desk: after a decision the next submission opens")
+check(run(clash)["final"] == "Rejected" and run(clash)["waiting_on"] == "-", "reviewer desk: info requested closes the run as rejected: the vendor files a new application")
 done_page = client.post(f"/review/{clash}", data={"reviewer": "Priya", "decision": "Rejected", "note": "Vendor never replied"}, follow_redirects=True).data
-check(b"Rejected by Priya" in done_page and next(r for r in store.load_runs() if r["run_id"] == clash)["final"] == "Rejected", "reviewer desk: a run waiting for the vendor's reply can still be closed by a reviewer")
+check(b"no longer waiting for a reviewer" in done_page, "reviewer desk: a closed run cannot be decided again")
 client.post("/reset")
 
 
@@ -330,22 +323,15 @@ mailer.deliver_queued()
 check(len(outbox()) == 1 and outbox()[0]["attempts"] == 1, "outbox: a sent message is never sent twice")
 
 fixing = run_case("04_fix_us_ein_dropped_zero")["run_id"]
-closing_id = run_case("05_fix_wrong_document_in_slot")["run_id"]
-days_ago = lambda days: (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
-with store.connect() as conn:
-    conn.execute("UPDATE runs SET ts=? WHERE run_id=?", (days_ago(4), fixing))
-    conn.execute("UPDATE runs SET ts=? WHERE run_id=?", (days_ago(8), closing_id))
-mailer.sweep()
-mailer.sweep()
-events = [row["event"] for row in outbox()]
-check(events.count("reminder") == 1 and events.count("closed") == 1, "background sender: a 4-day-old fix request gets one reminder and an 8-day-old one a closing notice, however often it checks")
+mailer.deliver_queued()
+check(not hasattr(mailer, "sweep") and [row["event"] for row in outbox()] == ["verdict", "verdict"], "outbox: there are no reminder mails and no closing notices, only a verdict per submission")
 
 reviewing = run_case("12_review_bank_account_shared_with_another_vendor")["run_id"]
 mailer.deliver_queued()
 page = client.get("/messages").data.decode()
 check("Simulated: no mail service" in page and "accounts@apexglobal.example" in page and "Sent (simulated)" in page and page.count("Your application is approved.") == 1, "messages: the page says the mail service is simulated, shows who it is to, and the status of each message")
-check("Your application is under review. We will reach back to you if anything is needed." in page and "Please fix" in page and page.count("Reminder: your application is still waiting") == 1 and "did not hear back within 7 days" in page,
-      "messages: under review, please-fix, reminder and closing notice all went out")
+check("Your application is under review. We will reach back to you if anything is needed." in page and "Please correct this and submit a new application." in page and "Reminder" not in page,
+      "messages: under review and the rejection with what to correct both went out, and no reminder")
 shown_to_vendor = "Your application is under review. We will reach back to you if anything is needed."
 check(shown_to_vendor in client.get(f"/run/{reviewing}").data.decode() and shown_to_vendor not in client.get(f"/review?run={reviewing}").data.decode()
       and shown_to_vendor not in client.get(f"/dashboard?run={reviewing}").data.decode(), "the vendor's message shows on the vendor's result page, not on the reviewer desk or the dashboard detail")
@@ -363,13 +349,11 @@ check("Your application is rejected because we could not verify your contact det
 check("1. your company registration certificate showing your current legal name" in page and "Please send a new application with them on the Onboard vendor page." in page, "messages: a request for more information lists the documents needed, worked out from the findings")
 check("internal:" not in page and "different company" not in page and "another vendor" not in page, "messages: nothing the reviewer typed, and nothing about other vendors, reaches the vendor")
 
-parent = run_case("09_fix_near_miss_name")["run_id"]
-child = run_case("09_fix_near_miss_name")["run_id"]
 by_thread = {t["id"]: t for t in mailer.threads()}
-thread = by_thread[parent]
-check(child not in by_thread and [m["run_id"] for m in thread["messages"]] == [parent, child] and thread["messages"][0]["subject"] == f"Your vendor application ({parent})"
-      and thread["messages"][1]["subject"] == f"Re: Your vendor application ({parent})", "messages: a new application from the same applicant is a reply in the same thread, with the same subject and Re:")
-check(len(by_thread) == sum(1 for r in store.load_runs() if not r["parent_id"]), "messages: exactly one thread per application, however many attempts it has")
+thread = by_thread[reviewing]
+check([m["run_id"] for m in thread["messages"]] == [reviewing, reviewing] and thread["messages"][0]["subject"] == f"Your vendor application ({reviewing})"
+      and thread["messages"][1]["subject"] == f"Re: Your vendor application ({reviewing})", "messages: the reviewer's outcome is a reply in the same thread, with the same subject and Re:")
+check(len(by_thread) == len(store.load_runs()), "messages: exactly one thread per application")
 
 nobody = run_case("25_fix_incomplete_form_with_wrong_document")["run_id"]
 mailer.deliver_queued()
@@ -452,7 +436,7 @@ def attempt(data, extra=()):
     rid = store.save_run(data, decision, 0.01)
     return decision, rid
 d1, r1 = attempt(bad_tax)
-check(d1["sub_status"] == "Waiting for vendor" and not any(f["code"] in ("REPEATED_ATTEMPTS", "IDENTITY_CHANGED_BETWEEN_ATTEMPTS") for f in d1["findings"]), "attempts: a first application has no attempt findings")
+check(d1["status"] == "Rejected" and not any(f["code"] in ("REPEATED_ATTEMPTS", "IDENTITY_CHANGED_BETWEEN_ATTEMPTS") for f in d1["findings"]), "attempts: a first application has no attempt findings")
 d2, r2 = attempt(base)  # the vendor corrected exactly the tax ID they were asked to correct
 check(d2["status"] == "Approved", "attempts: correcting the field you were asked to correct is fine, and a clean second application is approved")
 store.reset()
@@ -460,7 +444,7 @@ d1, r1 = attempt(dict(base, bank_account_name="Ember Textile Private Limited")) 
 d2, r2 = attempt(dict(base, bank_account_name="Ember Textile Private Limited", mobile="9876500001"))
 d3, r3 = attempt(dict(base, bank_account_name="Ember Textile Private Limited", mobile="9876500002"))
 d4, r4 = attempt(dict(base, bank_account_name="Ember Textile Private Limited", mobile="9876500003"))
-check(all(d["sub_status"] == "Waiting for vendor" for d in (d1, d2, d3)), "attempts: three honest attempts are each just sent back")
+check(all(d["status"] == "Rejected" for d in (d1, d2, d3)), "attempts: three honest attempts are each just rejected with what to correct")
 check(d4["sub_status"] == "Needs review" and "REPEATED_ATTEMPTS" in [f["code"] for f in d4["findings"]], "attempts: the 4th attempt by the same applicant goes to a reviewer")
 d5, _ = attempt(base)  # the 5th is perfectly clean
 check((d5["status"], d5["sub_status"]) == ("Pending", "Needs review"), "attempts: a perfect 5th attempt is NOT approved automatically, a reviewer decides")

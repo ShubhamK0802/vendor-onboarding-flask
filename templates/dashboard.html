@@ -12,7 +12,6 @@
 <h3>Open right now</h3>
 <div class="metrics">
   <div class="metric" title="Waiting for a reviewer's decision"><span>With a reviewer now</span><b>{{ with_reviewer }}</b></div>
-  <div class="metric" title="Waiting for the vendor to fix something or answer a question"><span>With the vendor now</span><b>{{ with_vendor }}</b></div>
 </div>
 
 <div class="grid">
@@ -28,7 +27,7 @@
   <div class="history-tools">
     <form method="get" class="inline">
       <label>Show
-        <select name="show" onchange="this.form.submit()">{% for s in ['All', 'Approved', 'Pending', 'Rejected', 'Replaced'] %}<option {{ 'selected' if s == show }}>{{ s }}</option>{% endfor %}</select>
+        <select name="show" onchange="this.form.submit()">{% for s in ['All', 'Approved', 'Pending', 'Rejected'] %}<option {{ 'selected' if s == show }}>{{ s }}</option>{% endfor %}</select>
       </label>
     </form>
     <a class="button secondary" href="{{ url_for('export_csv') }}">Export CSV</a>

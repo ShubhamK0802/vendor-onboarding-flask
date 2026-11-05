@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
 <h1>Reviewer desk</h1>
-{% if not everyone and not info_waiting %}
+{% if not everyone %}
 <div class="card empty">Nothing is waiting for a reviewer.</div>
 {% else %}
 <div class="card">
@@ -57,18 +57,12 @@
         <button class="secondary" name="decision" value="Rejected">Reject</button>
         <button class="secondary" name="decision" value="Info requested">Request more info</button>
       </div>
-      <p class="muted">After you decide, the next submission in this order opens.</p>
+      <p class="muted">Request more info closes this application as rejected: the vendor is told what to send and files a new application. After you decide, the next submission in this order opens.</p>
     </form>
   </section>
 </div>
 {% endif %}
 
-<details class="card"><summary>Waiting on the vendor ({{ waiting|length }})</summary>
-  <p class="muted">The vendor fixes these and sends a new application from the Onboard vendor page; the earlier one is then marked replaced. Where a reviewer asked for more information, you can still open it and decide if the vendor never answers.</p>
-  {% if waiting %}<table><thead><tr><th>Submission ID</th><th>Submitted at</th><th>Company</th><th>Status</th><th>What to fix</th></tr></thead>
-    <tbody>{% for r in waiting %}<tr><td>{% if r in info_waiting %}<a href="{{ url_for('review_page', run=r.run_id, **args) }}">{{ r.run_id }}</a>{% else %}{{ r.run_id }}{% endif %}</td><td>{{ r.ts.replace('T', ' ') }}</td><td>{{ r.company }}</td><td>{{ r.final_sub }}</td><td>{{ reasons(r) }}</td></tr>{% endfor %}</tbody></table>
-  {% else %}<p class="muted">None.</p>{% endif %}
-</details>
 <details class="card"><summary>Reviewer decisions so far ({{ decisions|length }})</summary>
   {% if decisions %}<table><thead><tr><th>When</th><th>Submission ID</th><th>Decision</th><th>Reviewer</th><th>Reason</th></tr></thead>
     <tbody>{% for d in decisions %}<tr><td>{{ d.ts.replace('T', ' ') }}</td><td>{{ d.run_id }}</td><td>{{ d.decision }}</td><td>{{ d.reviewer }}</td><td>{{ d.note }}</td></tr>{% endfor %}</tbody></table>

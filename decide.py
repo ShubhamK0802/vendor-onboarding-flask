@@ -4,22 +4,19 @@ from checks import (
     check_completeness, check_country, check_formats, check_documents,
     check_identity, check_name_match, check_verification, check_duplicates, check_attempts,
 )
-from config import FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION, VENDOR_TO_FIX
+from config import FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION
 
 
 def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
     if status == "Approved":
         return "Your application is approved."
-    if status == "Rejected":
-        if reject_reasons:
-            return "Your application is rejected because " + "; ".join(reject_reasons) + ". If this was a mistake, submit a new application."
-        return "Your application is rejected."
-    head = "Your application is under review. We will reach back to you if anything is needed." if sub_status == NEEDS_REVIEW else ""
-    if not fixes:
-        return head
-    todo = f"Please fix: {fixes[0]}" if len(fixes) == 1 else "Please fix:\n" + "\n".join(f"{i}. {fix}" for i, fix in enumerate(fixes, 1))
-    todo += "\nThen send us a new application with these corrected."
-    return f"{head}\n{todo}" if head else todo
+    if status == "Pending":
+        return "Your application is under review. We will reach back to you if anything is needed."
+    if reject_reasons:
+        return "Your application is rejected because " + "; ".join(reject_reasons) + ". If this was a mistake, submit a new application."
+    if len(fixes) == 1:  # only mistakes or gaps the vendor can correct: say exactly what, and that a new application is the way forward
+        return f"Your application is rejected because: {fixes[0]}\nPlease correct this and submit a new application."
+    return "Your application is rejected because:\n" + "\n".join(f"{i}. {fix}" for i, fix in enumerate(fixes, 1)) + "\nPlease correct these and submit a new application."
 
 
 def decide(stage_results):
@@ -32,12 +29,10 @@ def decide(stage_results):
 
     if not findings:
         status, sub_status = "Approved", None
-    elif reject_reasons or red_flags >= 2:  # a lone contradiction is a typo the vendor can fix; two at once are not
-        status, sub_status = "Rejected", None
-    elif REVIEW in levels:
+    elif REVIEW in levels and not reject_reasons and red_flags < 2:  # a lone contradiction is a typo the vendor can fix; two at once are not
         status, sub_status = "Pending", NEEDS_REVIEW
     else:
-        status, sub_status = "Pending", VENDOR_TO_FIX
+        status, sub_status = "Rejected", None
 
     if status == "Rejected" and red_flags >= 2:
         reject_reasons.append("the details you gave contradict each other")

@@ -4,12 +4,12 @@ from checks import (
     check_completeness, check_country, check_formats, check_documents,
     check_identity, check_name_match, check_verification, check_duplicates, check_attempts,
 )
-from config import FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION
+from config import ALREADY_REGISTERED, FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION
 
 
 def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
     if status == "Approved":
-        return "Your application is approved."
+        return "You are already registered with us. No new application is needed." if sub_status == ALREADY_REGISTERED else "Your application is approved."
     if status == "Pending":
         return "Your application is under review. We will reach back to you if anything is needed."
     if reject_reasons:
@@ -29,6 +29,8 @@ def decide(stage_results):
 
     if not findings:
         status, sub_status = "Approved", None
+    elif all(f["code"] == "DUPLICATE_APPLICATION" for f in findings):  # an exact repeat of an onboarded vendor: nothing to decide, nothing new to create
+        status, sub_status = "Approved", ALREADY_REGISTERED
     elif REVIEW in levels and not reject_reasons and red_flags < 2:  # a lone contradiction is a typo the vendor can fix; two at once are not
         status, sub_status = "Pending", NEEDS_REVIEW
     else:
@@ -56,7 +58,9 @@ def iter_stages(submission, existing_vendors, history=()):
     yield check_name_match(submission)
     yield check_verification(submission)
     yield check_duplicates(submission, existing_vendors)
-    yield check_attempts(submission, history)
+    attempts = check_attempts(submission, history, existing_vendors)
+    if attempts["status"] != "skipped":  # shown only when there is an earlier attempt to compare with
+        yield attempts
 
 
 def build_decision(stages):

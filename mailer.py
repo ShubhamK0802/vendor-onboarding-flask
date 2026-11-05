@@ -13,10 +13,10 @@ from contextlib import closing
 from datetime import datetime
 
 import store
-from config import NEEDS_REVIEW, VENDOR_DOCUMENTS, VENDOR_REASONS
+from config import ALREADY_REGISTERED, NEEDS_REVIEW, VENDOR_DOCUMENTS, VENDOR_REASONS
 
 MAX_ATTEMPTS, LOOP_SECONDS = 3, 3
-HEADLINES = {("Approved", None): "Approved", ("Pending", NEEDS_REVIEW): "Under review", ("Rejected", None): "Rejected"}
+HEADLINES = {("Approved", None): "Approved", ("Approved", ALREADY_REGISTERED): "Already registered", ("Pending", NEEDS_REVIEW): "Under review", ("Rejected", None): "Rejected"}
 STATUS = {"queued": "Queued", "failed": f"Failed after {MAX_ATTEMPTS} tries", "noaddr": "Not sent: no email address"}
 
 

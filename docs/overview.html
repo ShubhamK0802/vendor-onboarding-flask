@@ -1,60 +1,72 @@
 <!doctype html><meta charset="utf-8"><title>Vendor onboarding: workflow and mind map</title>
 <style>body{background:#fff;color:#111;font-family:Arial,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px}h2{margin-top:40px}</style>
 <h2>1. End to end</h2><pre class="mermaid">flowchart TD
-    A[Vendor submits form or JSON] --> B[Pipeline: 9 stages]
+    A[Vendor submits form, JSON or sample] --> B[Pipeline: 8 stages + repeat attempts when relevant]
     B --> C{Decision rule}
-    C -->|no findings| D[Approved + vendor ID]
+    C -->|no findings| D[Approved]
+    C -->|exact repeat of an onboarded vendor| AR[Approved: Already registered]
+    C -->|needs a person to decide| F[Pending: Needs review]
+    C -->|a rule rejects it / 2 red flags| G[Rejected]
     C -->|only mistakes or gaps the vendor can correct| G
-    C -->|needs judgment| F[Pending: Needs review]
-    C -->|rejects on its own / 2 red flags| G[Rejected]
     G -->|vendor corrects and files a new application| A
     F --> H[Reviewer takes the case]
     H -->|approve| D
     H -->|reject| G
-    H -->|ask for info| G
+    H -->|request more info| G
     D --> M[Mail to vendor]
+    AR --> M
     F --> M
     G --> M
 </pre><h2>2. The pipeline</h2><pre class="mermaid">flowchart LR
     S1[1 Completeness] --> S2[2 Country routing] --> S3[3 Format checks] --> S4[4 Documents]
     S4 --> S5[5 Identity checks] --> S6[6 Name match] --> S7[7 Verification] --> S8[8 Duplicate check]
-    S8 --> S9[9 Repeat attempts] --> D[Decision]
-</pre><h2>3. A new application after a fix request</h2><pre class="mermaid">sequenceDiagram
+    S8 --> S9[9 Repeat attempts: staff only, when relevant] --> D[Decision]
+</pre><h2>3. An applicant who is already onboarded, and look-alikes of one</h2><pre class="mermaid">flowchart TD
+    A[New application] --> B{Company ID already onboarded?}
+    B -->|yes| C{What differs?}
+    C -->|nothing| D[Approved: Already registered, nothing created]
+    C -->|company name| E[Needs review: same ID, different name]
+    C -->|bank account| F[Needs review: bank change, verify by calling the number on file]
+    C -->|contact or address| G[Needs review: details changed]
+    B -->|no| H{Name 92 percent or more like an onboarded vendor?}
+    H -->|yes, and phone, email, address or bank account also match| I[Needs review: same name, different company ID]
+    H -->|no| J[Other checks continue: a shared bank account or contact still goes to review]
+</pre><h2>4. A new application after a rejection</h2><pre class="mermaid">sequenceDiagram
     participant V as Vendor
     participant S as System
     participant R as Reviewer
     V->>S: Application A
-    S-->>V: Rejected because 1..n, please correct and apply again (mail)
+    S-->>V: Rejected. We found these problems 1..n. Please correct and submit a new application (mail)
     V->>S: New application B (nothing pre-filled, nothing carried over)
-    S->>S: Check B from scratch, then count linked earlier attempts
-    alt clean and fewer than 4 attempts, no unasked identity change
+    S->>S: Check B from scratch, then count earlier REJECTED attempts by the same applicant
+    alt clean, fewer than 4 attempts, no unasked identity change
         S-->>V: Approved
-    else 4th attempt or identity changed or earlier serious rejection
-        S->>R: Needs review (attempts shown)
-        S-->>V: Under review
+    else 4th attempt, identity changed without being asked, or an earlier serious rejection
+        S->>R: Needs review (attempts shown to staff)
+        S-->>V: Under review (never says why)
     end
-</pre><h2>4. Reviewer desk</h2><pre class="mermaid">flowchart TD
+</pre><h2>5. Reviewer desk</h2><pre class="mermaid">flowchart TD
     Q[Queue: Needs review] --> T[Take: claimed by one reviewer]
-    T --> V[Read findings, evidence, documents]
+    T --> V[Read findings, same and different comparison, documents]
     V --> X{Decide}
-    X -->|Approve| AP[Approved + vendor ID]
-    X -->|Reject| RJ[Rejected]
-    X -->|Request info| RI[Rejected: vendor files a new application]
+    X -->|Approve| AP[Approved]
+    X -->|Reject| RJ[Rejected, reason built from the findings]
+    X -->|Request more info| RI[Rejected: vendor told what to send and files a new application]
     V -->|Give back| Q
-</pre><h2>5. Mail</h2><pre class="mermaid">flowchart LR
+</pre><h2>6. Mail</h2><pre class="mermaid">flowchart LR
     E[Decision made] --> O[Outbox: queued]
     O --> W[Background sender]
     W -->|demo mode| SIM["Sent (simulated)"]
-    W -->|Brevo configured + allowlisted| BR["Sent (real)"]
-    W -->|error| F[Failed]
+    W -->|Brevo configured and allowlisted| BR["Sent (real)"]
+    W -->|error, retried 3 times| F[Failed]
     O -->|no address| N[No address]
 </pre><h2>Mind map</h2><pre class="mermaid">mindmap
   root((Vendor onboarding))
     Intake
       Form with PDFs
       JSON file
-      7 samples
-      New application after a fix
+      9 samples + 5 corrected
+      New application after a rejection
     Pipeline
       1 Completeness
       2 Country routing
@@ -77,13 +89,18 @@
         Embargo
         Placeholder ID
       8 Duplicates
+        Already registered
+        Same ID different details
+        Same name different ID
       9 Repeat attempts
+        Staff only
     Decision
       Approved
+        Already registered
       Pending
         Needs review
       Rejected
-        Rejects on its own
+        A rule rejects it
         Two red flags
         Only mistakes or gaps
     Fraud defences
@@ -96,10 +113,13 @@
       Rate limit
     People
       Vendor
+        Sees status and message
+        Never sees vendor ID
       Reviewer
         Take
         Decide
         Request info
+        Same and different notes
     Mail
       Outbox
       Background sender
@@ -107,6 +127,6 @@
     Evidence
       Dashboard
       CSV export
-      192 tests
+      216 tests
       Demo kit
 </pre><script type="module">import m from "https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs";m.initialize({startOnLoad:true});</script>

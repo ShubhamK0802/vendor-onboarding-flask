@@ -382,6 +382,29 @@ def same(first, second):
     return (normalize_name(first) or "") == (normalize_name(second) or "")
 
 
+def mask(number):
+    digits = str(number or "")
+    return "****" + digits[-4:] if digits else ""
+
+
+def compare(submission, vendor):
+    """For the reviewer: what this application shares with a vendor already on file, and what differs. Only fields both sides have are compared."""
+    same_, different = [], []
+
+    def row(label, new, old, shown=lambda value: value):
+        if new and old:
+            (same_ if new == old else different).append(label if new == old else f"{label} ({shown(old)} \u2192 {shown(new)})")
+
+    row("company ID", company_key(submission), normalize_id(vendor.get("company_key")))
+    row("company name", core_name(submission.get("company_name")), core_name(vendor.get("company_name")), lambda value: value.title())
+    row("bank account", normalize_id(submission.get("bank_account_number")), normalize_id(vendor.get("bank_account_number")), mask)
+    row("phone", normalize_id(submission.get("mobile")), normalize_id(vendor.get("mobile")), lambda value: "")
+    row("email", (clean_value(submission.get("email")) or "").lower(), (clean_value(vendor.get("email")) or "").lower(), lambda value: "")
+    row("address", normalize_name(submission.get("address")), normalize_name(vendor.get("address")), lambda value: "")
+    clean = lambda items: [item.replace(" ( \u2192 )", "") for item in items]  # fields shown by name only
+    return f"Same: {', '.join(same_) or 'nothing'}. Different: {'; '.join(clean(different)) or 'nothing'}."
+
+
 def check_duplicates(submission, existing_vendors):
     key = company_key(submission)
     if key is None:
@@ -392,19 +415,27 @@ def check_duplicates(submission, existing_vendors):
     for vendor in existing_vendors:
         if vendor.get("company_key") == key:  # this company is already onboarded: what is different decides what happens
             if core_name(vendor.get("company_name")) != name:
-                found["DUPLICATE_KEY_NEW_NAME"] = make_finding("DUPLICATE_KEY_NEW_NAME", REVIEW, "This company ID is already registered under a different name; a reviewer will confirm")
+                found["DUPLICATE_KEY_NEW_NAME"] = make_finding("DUPLICATE_KEY_NEW_NAME", REVIEW, "This company ID is already registered under a different name; a reviewer will confirm. " + compare(submission, vendor))
                 continue
             changed = False
             if account and normalize_id(vendor.get("bank_account_number")) != account:  # the classic payment-fraud pattern: only a call to the number on file can settle it
-                found["BANK_DETAILS_CHANGED"] = make_finding("BANK_DETAILS_CHANGED", REVIEW, "The bank account differs from the one on file for this vendor; a reviewer will verify it by calling a known number")
+                found["BANK_DETAILS_CHANGED"] = make_finding("BANK_DETAILS_CHANGED", REVIEW, "The bank account differs from the one on file for this vendor; a reviewer will verify it by calling a known number. " + compare(submission, vendor))
                 changed = True
             if (mobile and vendor.get("mobile") and normalize_id(vendor["mobile"]) != mobile) or (email and vendor.get("email") and vendor["email"].lower() != email) \
                     or (address and vendor.get("address") and not same(vendor["address"], address)):
-                found["EXISTING_VENDOR"] = make_finding("EXISTING_VENDOR", REVIEW, "This company is already onboarded and its contact details or address changed; a reviewer will confirm the update")
+                found["EXISTING_VENDOR"] = make_finding("EXISTING_VENDOR", REVIEW, "This company is already onboarded and its contact details or address changed; a reviewer will confirm the update. " + compare(submission, vendor))
                 changed = True
             if not changed:
                 found["DUPLICATE_APPLICATION"] = make_finding("DUPLICATE_APPLICATION", REVIEW, "This company is already onboarded with exactly these details")
             continue
+        other = core_name(vendor.get("company_name"))
+        if name and other and fuzz.ratio(name, other) >= NAME_LINK_SCORE:  # the same name alone proves nothing (many companies share one); with something else in common it needs a person
+            shared = [label for label, mine, theirs in (("phone", mobile, normalize_id(vendor.get("mobile"))), ("email", email, (clean_value(vendor.get("email")) or "").lower()),
+                                                        ("address", normalize_name(address), normalize_name(vendor.get("address"))), ("bank account", account, normalize_id(vendor.get("bank_account_number"))))
+                      if mine and mine == theirs]
+            if shared:
+                found["SAME_NAME_DIFFERENT_COMPANY_ID"] = make_finding("SAME_NAME_DIFFERENT_COMPANY_ID", REVIEW,
+                                                                       f"Same company name and the same {', '.join(shared)} as an onboarded vendor, but a different company ID; a reviewer will decide. " + compare(submission, vendor))
         if lookalike(submission.get("company_name"), vendor.get("company_name")):
             found["LOOKALIKE_OF_EXISTING_VENDOR"] = make_finding("LOOKALIKE_OF_EXISTING_VENDOR", REVIEW, "The company name differs from an onboarded vendor's name only in look-alike characters")
         if account and normalize_id(vendor.get("bank_account_number")) == account:
@@ -454,10 +485,13 @@ def changed_identity(submission, earlier):
     return changed
 
 
-def check_attempts(submission, history, now=None):
-    """history: earlier runs (as store.load_runs gives them). Approved ones are not attempts: the duplicate check handles a company that is already in."""
+def check_attempts(submission, history, onboarded=(), now=None):
+    """history: earlier runs (as store.load_runs gives them). Only REJECTED ones are attempts: the vendor was turned away and tried again. An approved run,
+    or one waiting for a reviewer, taught the vendor nothing, and a company that is already onboarded is the duplicate check's business."""
     now = now or datetime.now()
-    linked = [(run, why) for run in history if run["final"] != "Approved" and now - datetime.fromisoformat(run["ts"]) <= timedelta(days=ATTEMPT_WINDOW_DAYS)
+    if company_key(submission) in {vendor.get("company_key") for vendor in onboarded}:
+        return make_result("repeat_attempts", [], skipped_reason="Already onboarded: the duplicate check covers it")
+    linked = [(run, why) for run in history if run["final"] == "Rejected" and now - datetime.fromisoformat(run["ts"]) <= timedelta(days=ATTEMPT_WINDOW_DAYS)
               and (why := link_reasons(submission, run))]
     findings = []
     if len(linked) >= ATTEMPTS_BEFORE_REVIEW:
@@ -466,6 +500,6 @@ def check_attempts(submission, history, now=None):
     changed = sorted({label for run, _ in linked for label in changed_identity(submission, run)})
     if changed:
         findings.append(make_finding("IDENTITY_CHANGED_BETWEEN_ATTEMPTS", REVIEW, f"Changed since an earlier attempt, without being asked: {', '.join(changed)}; a reviewer will confirm"))
-    if any(code in REJECT_ON_ITS_OWN and code != "DUPLICATE_APPLICATION" for run, _ in linked for code in run["codes"]):
+    if any(code in REJECT_ON_ITS_OWN for run, _ in linked for code in run["codes"]):
         findings.append(make_finding("SERIOUS_EARLIER_REJECTION", REVIEW, "An earlier attempt by this applicant was stopped for a serious reason; a reviewer will decide"))
     return make_result("repeat_attempts", findings, skipped_reason=None if linked else "No earlier attempt found for this applicant")

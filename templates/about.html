@@ -23,7 +23,7 @@
   <table>
     <thead><tr><th>Status</th><th>The test</th><th>What happens next</th></tr></thead>
     <tbody>
-      <tr><td><b>Approved</b></td><td>Every rule positively checked out.</td><td>The vendor can be paid.</td></tr>
+      <tr><td><b>Approved</b></td><td>Every rule positively checked out. Also: an exact repeat of an already-onboarded vendor (nothing new) is Approved as <i>already registered</i>.</td><td>The vendor can be paid. A repeat creates nothing new, and the vendor is told it is already registered.</td></tr>
       <tr><td><b>Pending: Needs review</b></td><td>The answer depends on something only our staff have: our records, a call to a number already on file, or judgment. Retyping would not settle it.</td><td>A reviewer decides. The vendor is told it is under review.</td></tr>
       <tr><td><b>Rejected</b></td><td>This application cannot be approved as submitted: a rule rejects it, or it only has mistakes or gaps the vendor can correct. The application is closed.</td><td>The vendor is told why (for mistakes and gaps, exactly what to correct) and files a new application.</td></tr>
     </tbody>
@@ -31,7 +31,6 @@
   <p><b>When is a submission rejected?</b></p>
   <ul>
     <li><b>Two or more contradictions at once</b> (for example GSTIN and PAN disagree and the PAN type does not fit): a typo does not explain that. One contradiction alone is a mistake the vendor can fix.</li>
-    <li><b>A duplicate with nothing new:</b> a company that is already onboarded applies again with exactly the same details.</li>
     <li><b>The name is on the sanctions watchlist</b> (an exact match). A name that is only close goes to a reviewer, because false matches are common.</li>
     <li><b>The bank is in an embargoed country</b> (Iran, North Korea, Syria, Cuba).</li>
     <li><b>The tax registration is cancelled</b> in the registry.</li>
@@ -43,7 +42,7 @@
   <p>Anything the system cannot positively verify is never approved automatically.</p>
 
   <h2>How the checks are sorted</h2>
-  <p>Nine checks run in order: completeness, country routing, format checks, documents, identity checks, name match, verification (registry, sanctions, embargo, placeholder IDs), duplicate check, repeat attempts. Each finding is one of three kinds:</p>
+  <p>Up to nine checks run in order: completeness, country routing, format checks, documents, identity checks, name match, verification (registry, sanctions, embargo, placeholder IDs), duplicate check, and repeat attempts (shown only when the same applicant has applied before). Each finding is one of three kinds:</p>
   <ul>
     <li><b>Vendor can fix</b>: a missing field or document, a typo in a format, a name that nearly matches the bank account holder, a legal form that differs (LLP vs Private Limited).</li>
     <li><b>Needs review</b>: a bank account already used by another vendor, a possible sanctions-list match, an onboarded vendor whose bank account or details changed, a company ID under a different name, a shared phone or email, a foreign bank account, an unsupported country, names in a non-Latin script.</li>
@@ -60,7 +59,9 @@
   <ul>
     <li>A reviewer's decision becomes the vendor's current status; the rules' original verdict is kept next to it.</li>
     <li><i>Request more info</i> closes the application as rejected: the vendor is told what to send and files a new application.</li>
-    <li><b>Repeat attempts</b> are counted across applications (same company ID, bank account, phone, email, near-identical name, or the same uploaded file, within 30 days). From the 4th attempt, or when the bank account, tax ID, PAN or company name changes without being asked, a person decides, even if the new form is perfect. Too many submissions from one network in an hour are refused. If the applicant changes every detail, nothing links the attempts: real registry and bank checks are the answer in production.</li>
+    <li><b>Same company ID, different details</b> (name, bank account, phone, address): a reviewer sees what is the same and what differs. <b>Same name and something else in common</b> (address, phone, email or bank account) but a <b>different company ID</b>: also a reviewer, who sees the same comparison. The same name alone is not enough.</li>
+    <li><b>Vendor IDs</b> are internal: the vendor never sees one.</li>
+    <li><b>Repeat attempts</b> are counted across earlier <i>rejected</i> applications (same company ID, bank account, phone, email, near-identical name, or the same uploaded file, within 30 days). From the 4th attempt, or when the bank account, tax ID, PAN or company name changes without being asked, a person decides, even if the new form is perfect. Too many submissions from one network in an hour are refused. If the applicant changes every detail, nothing links the attempts: real registry and bank checks are the answer in production.</li>
     <li>There is no resubmission. A vendor who is sent back files a <b>new application</b>, and it is checked from scratch: nothing is pre-filled or carried over. There are no timers and no reminder mails: nothing is waiting on the vendor.</li>
     <li>Every update goes to the vendor <b>automatically</b>, in one email thread per application. Messages are saved in an outbox and sent by a background worker; the <b>Messages</b> page shows each one with its status. First the verdict, for example "your application is under review, we will reach back to you if anything is needed"; then the reviewer's outcome in the same thread: approved, rejected with the reason, or the list of documents we need. The reasons and document lists are worked out from what the checks found, so the reviewer types nothing, and nothing about other vendors is revealed.</li>
     <li>Approved vendors join the list the duplicate check compares against. An already-onboarded company that applies again with nothing new is rejected as a duplicate; if its bank account, contact details or address changed, a reviewer verifies the change (a bank change by calling the number already on file).</li>

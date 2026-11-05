@@ -6,7 +6,8 @@ Every decision is made by fixed rules in code (`checks.py`, `decide.py`, `config
 
 | Status | Meaning | Who acts next |
 |---|---|---|
-| **Approved** | No findings. A vendor ID is issued. | Nobody |
+| **Approved** | No findings. A vendor ID is issued (internal: the vendor never sees it). | Nobody |
+| **Approved: Already registered** | An exact repeat of an onboarded vendor (nothing new). Nothing is created; the vendor is told it is already registered. | Nobody |
 | **Pending: Needs review** | A case that needs human judgment. The vendor is told it is under review. | Reviewer |
 | **Rejected** | This application cannot be approved as submitted: a rule rejects it, or it only has mistakes or gaps the vendor can correct. The vendor is told why (for mistakes and gaps, exactly what to correct). | Nobody. The vendor files a **new application** |
 
@@ -20,14 +21,14 @@ Every decision is made by fixed rules in code (`checks.py`, `decide.py`, `config
 
 ## 3. The decision rule (in order)
 
-1. No findings → **Approved**.
+1. No findings → **Approved**. Only `DUPLICATE_APPLICATION` → **Approved: Already registered**.
 2. Any "rejects on its own" finding (section 6), **or** two or more RED findings → **Rejected**.
 3. Any REVIEW finding (including a repeat-attempt finding, section 5.9) → **Pending: Needs review**.
 4. Otherwise (only things the vendor can correct: a typo, a missing field or document) → **Rejected**, and the message lists exactly what to correct.
 
 There is no waiting state, no timer and no reminder: nothing is pending on the vendor's side. A corrected form is a new application, checked from scratch.
 
-## 4. The nine stages (run in this order)
+## 4. The stages (run in this order; stage 9 is internal and runs only when the applicant is not already onboarded and has earlier rejected attempts)
 
 | # | Stage | What it checks |
 |---|---|---|
@@ -108,7 +109,8 @@ Registry and sanctions are **demo data** (`registry.json`, `sanctions.json`, fic
 ### 5.8 Duplicate check (against vendors on file)
 | Finding | Level | Trigger |
 |---|---|---|
-| `DUPLICATE_APPLICATION` | REVIEW → rejects | Same company, exactly the same details |
+| `DUPLICATE_APPLICATION` | (outcome) | Same company, exactly the same details: **Approved, already registered** |
+| `SAME_NAME_DIFFERENT_COMPANY_ID` | REVIEW | Same name (92% or more) and the same phone, email, address or bank account as an onboarded vendor, but a different company ID. The name alone is not enough |
 | `EXISTING_VENDOR` | REVIEW | Same company, contact or address changed |
 | `BANK_DETAILS_CHANGED` | REVIEW | Same company, different bank account (classic payment-fraud pattern) |
 | `DUPLICATE_KEY_NEW_NAME` | REVIEW | Same company ID under a different name |
@@ -116,8 +118,10 @@ Registry and sanctions are **demo data** (`registry.json`, `sanctions.json`, fic
 | `SHARED_CONTACT` | REVIEW | Phone or email belongs to another company |
 | `LOOKALIKE_OF_EXISTING_VENDOR` | REVIEW → rejects | Name differs from an existing vendor only by look-alike characters |
 
+The review findings here (`EXISTING_VENDOR`, `BANK_DETAILS_CHANGED`, `DUPLICATE_KEY_NEW_NAME`, `SAME_NAME_DIFFERENT_COMPANY_ID`) each carry a note for the reviewer saying **what is the same and what differs**, for example "Same: company ID, email. Different: company name (Apex Global to Apex Holdings); bank account (****7891 to ****4321); phone; address." The vendor is only told "under review".
+
 ### 5.9 Repeat attempts (against earlier applications, not vendors on file)
-An earlier application counts as the same applicant when it shares a company ID, bank account, phone or email, has a company name 92% or more similar, or has a byte-identical uploaded file, and was made in the last 30 days. Approved ones are not attempts (the duplicate check handles them).
+An earlier application counts as the same applicant when it shares a company ID, bank account, phone or email, has a company name 92% or more similar, or has a byte-identical uploaded file, and was made in the last 30 days. **Only rejected earlier applications are attempts** (the vendor was turned away and tried again). An approved one, an 'already registered' one, or one still waiting for a reviewer is not an attempt, and a company that is already onboarded skips this stage entirely: the duplicate check covers it. The stage is internal: it is recorded and shown to staff (reviewer desk, dashboard detail) but never shown to the vendor.
 
 | Finding | Level | Trigger |
 |---|---|---|
@@ -125,13 +129,12 @@ An earlier application counts as the same applicant when it shares a company ID,
 | `IDENTITY_CHANGED_BETWEEN_ATTEMPTS` | REVIEW | Bank account, tax ID, PAN or company name differs from an earlier attempt and nobody asked for that change (fields the earlier attempt flagged may change) |
 | `SERIOUS_EARLIER_REJECTION` | REVIEW | An earlier linked attempt was stopped for a serious reason (sanctions, look-alike, placeholder ID, embargo, cancelled registration) |
 
-The vendor is only told "under review", never why. A reviewer sees the finding text. **Rate limit:** more than 30 submissions per hour from one network address are refused. **Ceiling:** an applicant who changes every identifier and has real identities behind each is not linked; the fix is real registry and bank verification (a production upgrade).
+The vendor is only told "under review", never why. The vendor's own page also hides the findings table, the flagged-field marks and the vendor ID. A reviewer sees the finding text. **Rate limit:** more than 30 submissions per hour from one network address are refused. **Ceiling:** an applicant who changes every identifier and has real identities behind each is not linked; the fix is real registry and bank verification (a production upgrade).
 
 ## 6. Rejected on its own (no "please fix", straight to Rejected)
 
 | Code | What the vendor is told |
 |---|---|
-| `DUPLICATE_APPLICATION` | Your company is already onboarded with exactly these details |
 | `SANCTIONS_MATCH` | We are unable to onboard this company (deliberately vague) |
 | `EMBARGOED_BANK_COUNTRY` | We cannot make payments to a bank in that country |
 | `REGISTRY_CANCELLED` | Your tax registration is shown as cancelled or inactive |
@@ -151,14 +154,15 @@ The vendor is never told what matched a sanctions list, which other vendor was i
 |---|---|
 | Approved | "Your application is approved." |
 | Needs review | "Your application is under review. We will reach back to you if anything is needed." |
+| Already registered | "You are already registered with us. No new application is needed." |
 | Rejected: only mistakes or gaps | "Your application is rejected. We found these problems:" then a numbered list (for example "Tax ID is missing", "The file in the Registration document field is a different document: upload your registration document there"), then "Please correct these and submit a new application." |
 | Rejected: a rule | "Your application is rejected because <safe reason>. If this was a mistake, submit a new application." |
 
-A reviewer's decision produces the same wording automatically, built from what the checks found (`VENDOR_REASONS`, `VENDOR_DOCUMENTS`); the reviewer types nothing. All messages for one application go in the same mail thread ("Re: …").
+**Reviewer decisions:** Approve gives *Approved by reviewer*; Reject gives *Rejected by reviewer* with a reason worked out from the findings; **Request more info** closes the application as *Rejected: information needed* and tells the vendor which documents to send, after which the vendor files a new application. A reviewer's decision produces the same wording automatically, built from what the checks found (`VENDOR_REASONS`, `VENDOR_DOCUMENTS`); the reviewer types nothing. All messages for one application go in the same mail thread ("Re: …").
 
 ## 8. IDs
 - **Submission ID**: random 8 hex characters (cannot be guessed or forged in sequence).
-- **Vendor ID**: `V` + country code + 6 hex, for example `VIN3FA9C2`. Issued to every applicant, one per applicant.
+- **Vendor ID**: `V` + country code + 6 hex, for example `VIN3FA9C2`. Issued to every applicant, one per applicant. Internal: shown to staff (reviewer desk, dashboard, CSV), never to the vendor.
 
 ## 9. Known limits
-Registry and sanctions are demo data. Bank-account ownership is not verified with a bank. Document contents are not read, so a forged document of the right type passes that stage. India, US and Germany only; one bank account per submission. No document expiry tracking. Mail is simulated unless Brevo is configured. SQLite resets on free hosting.
+Registry and sanctions are demo data. Bank-account ownership is not verified with a bank. Document contents are not read, so a forged document of the right type passes that stage. India, US and Germany only; one bank account per submission. No document expiry tracking. Mail is simulated unless Brevo is configured. SQLite resets on free hosting. The form has no live in-field validation and there is no phone-number format rule per country (the server rules decide).

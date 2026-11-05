@@ -65,8 +65,10 @@ first = submit(INDIA)
 check(len(first) == 8 and first != run(submit(INDIA))["run_id"] and not first.startswith("S-") and re.fullmatch(r"VIN[0-9A-F]{6}", run(first)["vendor_id"]) and "-" not in run(first)["vendor_id"], "submission IDs are random 8-character codes, not a guessable sequence, and vendors get a V- ID")
 check(run(first)["final"] == "Approved", "clean vendor is approved")
 again = submit(INDIA)
-check(run(again)["final"] == "Rejected" and "DUPLICATE_APPLICATION" in run(again)["codes"] and "exactly these details" in run(again)["decision"]["vendor_message"],
-      "an already-onboarded vendor applying again with nothing new is rejected as a duplicate, with a safe reason")
+check(run(again)["final"] == "Approved" and run(again)["final_sub"] == "Already registered" and "DUPLICATE_APPLICATION" in run(again)["codes"]
+      and run(again)["decision"]["vendor_message"] == "You are already registered with us. No new application is needed.",
+      "an already-onboarded vendor applying again with nothing new is Approved as 'already registered', and told so")
+check(sum(1 for v in store.known_vendors(store.load_runs()) if v["company_key"] == "ABCCA1234D") == 1, "an 'already registered' repeat is not a second vendor on file")
 check(run(submit(INDIA))["vendor_id"] == run(first)["vendor_id"], "every submission by the same company carries the same vendor ID")
 moved = submit(dict(INDIA, address="99 Somewhere Else Road, Mumbai 400001"))
 check(run(moved)["final"] == "Pending" and run(moved)["waiting_on"] == "Reviewer" and "EXISTING_VENDOR" in run(moved)["codes"], "an onboarded vendor whose details changed goes to a reviewer, never auto-approved")
@@ -191,11 +193,11 @@ os.environ.pop("VIES_LIVE")
 store.reset()
 check(store.load_runs() == [] and store.load_decisions() == [] and len(store.known_vendors([])) == 1, "reset: no runs or decisions, vendors on file restored")
 
-# ---- the app offers seven samples (one clean vendor and six edge cases) and the corrected version of each edge case a vendor can fix
+# ---- the app offers nine samples (one clean vendor, six edge cases and two review cases) and the corrected version of each edge case a vendor can fix
 by_case = {case[0]: case for case in CASES}
 shown = sorted(f[:-5] for f in os.listdir("sample_inputs"))
-check(shown == sorted(file for file, _ in SAMPLES + CORRECTED) and len(SAMPLES) == 7 and len(CORRECTED) == 5, "samples: seven samples and five corrected versions", f"-> {shown}")
-check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Rejected", None), ("Rejected", None), ("Rejected", None), ("Rejected", None), ("Pending", "Needs review"), ("Rejected", None)],
+check(shown == sorted(file for file, _ in SAMPLES + CORRECTED) and len(SAMPLES) == 9 and len(CORRECTED) == 5, "samples: nine samples and five corrected versions", f"-> {shown}")
+check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Rejected", None), ("Rejected", None), ("Rejected", None), ("Rejected", None), ("Pending", "Needs review"), ("Rejected", None), ("Pending", "Needs review"), ("Pending", "Needs review")],
       "samples: they cover every outcome (approved, rejected for mistakes, rejected by a rule, needs review)")
 for file, case in SAMPLES + CORRECTED:
     with open(f"sample_inputs/{file}.json", encoding="utf-8") as handle:
@@ -233,7 +235,7 @@ check(client.post("/api/submit", data={"mode": "sample", "sample": "../app.py"})
 check(client.post("/api/submit", data={"mode": "json", "json_file": (io.BytesIO(b'{"company_name": "x",'), "bad.json")}, content_type="multipart/form-data").status_code == 400, "web: malformed JSON gives a clear error, not a crash")
 
 done = run_web(mode="sample", sample="01_approved_india_clean.json")
-check(done["error"] is None and len(done["stages"]) == 9 and b"Approved" in client.get(f"/run/{done['run_id']}").data, "web: sample runs through 9 stages and shows Approved")
+check(done["error"] is None and len(done["stages"]) == 8 and b"Approved" in client.get(f"/run/{done['run_id']}").data, "web: a first application runs through 8 stages (repeat attempts only appears when there is an earlier attempt) and shows Approved")
 done = run_case("12_review_bank_account_shared_with_another_vendor")
 pending_id = done["run_id"]
 check(pending_id.encode() in client.get("/review").data, "web: a pending run appears on the reviewer desk")
@@ -429,6 +431,76 @@ text = run_pipeline(incomplete_form(), [])["vendor_message"]
 check(text == "Your application is rejected. We found these problems:\n1. Email is missing\n2. Tax ID is missing\n3. Bank proof is missing: upload a voided cheque or passbook page\n"
       "4. The file in the Registration document field is a different document: upload your registration document there\nPlease correct these and submit a new application.", "vendor message: an incomplete form lists plainly what is missing and where to upload", text)
 
+# ---- already registered, hidden vendor ID, and what a reviewer is shown when an onboarded vendor's details differ
+store.reset()
+for name_ in ("01_approved_india_clean", "01_approved_india_clean"):
+    last = run_case(name_)["run_id"]
+page = client.get(f"/run/{last}").data.decode()
+check(run(last)["final_sub"] == "Already registered" and "You are already registered with us" in page, "web: an exact repeat shows 'already registered' on the vendor's page")
+check(run(last)["vendor_id"] and run(last)["vendor_id"] not in page and "Vendor VIN" not in page, "web: the vendor never sees a vendor ID")
+check(run(last)["vendor_id"] in client.get("/dashboard").data.decode(), "web: the dashboard (for staff) still shows the vendor ID")
+store.reset()
+store.save_run(INDIA, run_pipeline(INDIA, store.known_vendors([])), 0.01)  # Apex Global is on file
+onboarded = [{"company_key": "ABCCA1234D", "company_name": INDIA["company_name"], "bank_account_number": INDIA["bank_account_number"], "mobile": INDIA["mobile"], "email": INDIA["email"], "address": INDIA["address"]}]
+changed = run_pipeline(dict(INDIA, company_name="Apex Holdings", bank_account_number="60100987654321", mobile="9000012345"), onboarded)
+note = next(f["message"] for f in changed["findings"] if f["code"] == "DUPLICATE_KEY_NEW_NAME")
+check("Same: company ID, email, address." in note and "company name (Apex Global \u2192 Apex Holdings)" in note and "bank account (****7891 \u2192 ****4321)" in note and "phone" in note.split("Different:")[1],
+      "reviewer note: same company ID, different name and details lists what is the same and what differs", note)
+clone = dict(indian("Apex Global Private Limited", "ZZYCA9999Z", "40100999999999", mobile="9000099999", email="other@elsewhere.example"), address=INDIA["address"])
+res = run_pipeline(clone, onboarded)
+note = next(f["message"] for f in res["findings"] if f["code"] == "SAME_NAME_DIFFERENT_COMPANY_ID")
+check((res["status"], res["sub_status"]) == ("Pending", "Needs review") and "same address" in note and "Same: company name, address." in note and "company ID (ABCCA1234D" in note,
+      "same name and address as an onboarded vendor but a different company ID goes to a reviewer, with what is the same and different", note)
+name_only = indian("Apex Global Private Limited", "ZZYCA9999Z", "40100999999999", mobile="9000099999", email="other@elsewhere.example", address="77 Park Street, Kolkata 700016")
+check("SAME_NAME_DIFFERENT_COMPANY_ID" not in [f["code"] for f in run_pipeline(name_only, onboarded)["findings"]], "the same name alone is not enough: many unrelated companies share a name")
+store.reset()
+
+# ---- the two review samples, used as a person would: submit 01 first, then the sample
+for review_sample, expected_code in [("08_review_registered_company_changes_name_and_details", "DUPLICATE_KEY_NEW_NAME"), ("09_review_same_name_different_company_id", "SAME_NAME_DIFFERENT_COMPANY_ID")]:
+    client.post("/reset")
+    run_web(mode="sample", sample="01_approved_india_clean.json")
+    reviewed = run_web(mode="sample", sample=review_sample + ".json")["run_id"]
+    check(run(reviewed)["final"] == "Pending" and run(reviewed)["waiting_on"] == "Reviewer" and expected_code in run(reviewed)["codes"] and f">{reviewed}</a>" in client.get("/review").data.decode(),
+          f"review sample: {review_sample[:2]} goes to the reviewer desk with {expected_code}")
+    check("Same:" in " ".join(f["message"] for f in run(reviewed)["findings"]) and "Different:" in " ".join(f["message"] for f in run(reviewed)["findings"]),
+          f"review sample: {review_sample[:2]} shows the reviewer what is the same and what differs")
+    check("under review" in client.get(f"/run/{reviewed}").data.decode() and run(reviewed)["vendor_id"] not in client.get(f"/run/{reviewed}").data.decode(), f"review sample: {review_sample[:2]} tells the vendor only 'under review'")
+client.post("/reset")
+
+# ---- the repeat-attempts stage is internal: recorded for staff, never shown to the vendor
+client.post("/reset")
+one = run_web(mode="sample", sample="03_edge_tax_id_wrong_for_country.json")
+two = run_web(mode="sample", sample="03_edge_tax_id_wrong_for_country.json")
+check(all("repeat attempts" not in [x["name"] for x in r["stages"]] and len(r["stages"]) == 8 for r in (one, two)), "vendor view: the live view never shows the repeat-attempts stage")
+check("repeat_attempts" not in [x["stage"] for x in run(one["run_id"])["decision"]["stages"]] and "repeat_attempts" in [x["stage"] for x in run(two["run_id"])["decision"]["stages"]],
+      "repeat attempts: recorded on the second attempt only (not on the first)")
+vendor_page = client.get(f"/run/{two['run_id']}").data.decode()
+staff_page = client.get(f"/dashboard?run={two['run_id']}").data.decode()
+check("Reviewer view" not in vendor_page and "repeat attempts" not in vendor_page and 'badge orange">flagged' not in vendor_page and "Vendor VIN" not in vendor_page, "vendor view: no reviewer view, no internal stage, no flagged marks, no vendor ID")
+check("Reviewer view" in staff_page and "repeat attempts" in staff_page and 'badge orange">flagged' in staff_page, "staff view (dashboard detail): shows the reviewer view, the repeat-attempts stage and the flags")
+client.post("/reset")
+
+# ---- an onboarded company and review cases are not 'attempts': no double flag
+store.reset()
+seen_codes = []
+for sample_name in ["01_approved_india_clean", "06_edge_existing_vendor_changes_bank_account", "08_review_registered_company_changes_name_and_details",
+                    "08_review_registered_company_changes_name_and_details", "09_review_same_name_different_company_id"]:
+    history_ = store.load_runs()
+    with open(f"sample_inputs/{sample_name}.json", encoding="utf-8") as handle_:
+        data_ = json.load(handle_)
+    result_ = run_pipeline(data_, store.known_vendors(history_), history_)
+    store.save_run(data_, result_, 0.01)
+    seen_codes.append([stage_["stage"] for stage_ in result_["stages"] if stage_["stage"] == "repeat_attempts"])
+check(all(not codes_ for codes_ in seen_codes), "no double flag: review samples of an onboarded company never trigger the repeat-attempts stage")
+store.reset()
+base_ = fresh(copy.deepcopy(INDIA), "Ridge Fabrics Private Limited", "RIDCF3456R", "71100234567891")
+store.save_run(dict(base_, email=""), run_pipeline(dict(base_, email=""), store.known_vendors([])), 0.01)  # rejected: a gap
+pending_ = dict(base_, bank_account_name="Zenith Traders")
+history_ = store.load_runs()
+store.save_run(pending_, run_pipeline(pending_, store.known_vendors(history_), history_), 0.01)  # rejected too (third-party bank account)
+check(sum(1 for r in store.load_runs() if r["final"] == "Rejected") == 2, "attempts: both earlier applications were rejected, so both count")
+store.reset()
+
 # ---- repeat attempts: a fix is a new application, and trial and error is caught
 from datetime import datetime as _dt
 import checks as _checks
@@ -476,6 +548,7 @@ doc_a = {"tax_document": {"filename": "a.pdf", "sha256": "abc"}}
 check("uploaded file" in _checks.link_reasons(dict(other, documents=doc_a), {"payload": dict(base, documents=doc_a)}), "attempts: the same uploaded file links two applications")
 store.reset()
 app.app.config["RATE_LIMIT"] = 2
+app.SEEN.clear()
 codes = [client.post("/api/submit", data={"mode": "sample", "sample": "01_approved_india_clean.json"}).status_code for _ in range(3)]
 check(codes == [200, 200, 429], "rate limit: the third submission in an hour from one source is refused")
 app.app.config["RATE_LIMIT"] = 10 ** 6

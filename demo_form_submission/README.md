@@ -1,7 +1,7 @@
 # Form-submission kit: Horizon Textiles Private Limited
 
 A clean fictional vendor, to fill in the **Vendor form** on the Onboard vendor page. All the data and all four PDFs are made up, and every PDF is
-marked SAMPLE. Expected result: **Approved**, with a vendor ID.
+marked SAMPLE. Expected result: **Approved**.
 
 ## 1. Type these into the form
 | Field | Value |
@@ -38,7 +38,7 @@ On the **JSON file** tab, upload `vendor_submission.json`. It carries the same v
 | Bank account holder: `Horizon Textile Private Limited` (one letter off) | Rejected, with what to correct. Fix it and submit a new application: it is approved. (A 4th try for the same company goes to a reviewer, even if perfect.) |
 | Bank account number: replace a 0 with the letter `O` | Rejected outright: look-alike characters |
 | Leave the tax ID empty and upload no cheque | Rejected with a numbered list of what to correct |
-| Submit the exact same form a second time | Rejected as a duplicate (the company is already onboarded) |
+| Submit the exact same form a second time | Approved: already registered (nothing new is created, and the vendor sees no vendor ID) |
 
 A reviewer can open the submission and download these PDFs from **View submission**. The app stores them but does not read them.
 

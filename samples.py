@@ -132,7 +132,7 @@ CASES = [
     ("18_review_possible_sanctions_match", indian("Northern Star Arm Trading Limited", "NORCN3456R", "77000123456707"), SEED, "Pending", "Needs review", None),
     # ---------------- Rejected: cannot be approved as submitted, and a correction or a review would not change that
     ("19_reject_two_contradictions", edit(indian("Cobalt Tools Private Limited", "COBCT9012S", "79000123456711"), pan="ZZZZZ9999Z"), SEED, "Rejected", None, None),
-    ("20_reject_duplicate_application", INDIA, SEED + [APEX], "Rejected", None, None),
+    ("20_approved_already_registered", INDIA, SEED + [APEX], "Approved", "Already registered", None),
     ("21_reject_sanctions_name_match", indian("Northern Star Arms Trading Limited", "NORCN3457R", "80000123456712"), SEED, "Rejected", None, None),
     ("22_reject_embargoed_bank_country", german("Hansa Bauteile GmbH", "58261937", "", "BKMTIRTHXXX", iban=make_iban("IR", "0120000000012345678901")), SEED, "Rejected", None, None),
     ("23_reject_cancelled_registration", indian("Orbit Exports Private Limited", "ORBCO5612S", "81000123456713"), SEED, "Rejected", None, {"status": "cancelled"}),
@@ -145,11 +145,16 @@ CASES = [
     ("30_corrected_bank_holder_name", indian("Lumina Global Private Limited", "LUMCG5678N", "74000123456704"), SEED, "Approved", None, None),
     ("31_corrected_identity_fields", indian("Cobalt Tools Private Limited", "COBCT9012S", "79000123456711"), SEED, "Approved", None, None),
     ("32_corrected_lookalike_name", indian("Globex Foods Private Limited", "GLOCF4567G", "82000123456714"), SEED, "Approved", None, None),
+    # ---------------- two more samples for review (an onboarded vendor is on file once sample 01 has been submitted)
+    ("33_review_registered_id_new_name_and_details", edit(INDIA, company_name="Apex Holdings Private Limited", bank_account_name="Apex Holdings Private Limited",
+                                                         bank_account_number="60100987654321", mobile="9000012345", address="22 Park Street, Kolkata, West Bengal 700016"), SEED + [APEX], "Pending", "Needs review", None),
+    ("34_review_same_name_different_company_id", indian("Apex Global Private Limited", "ZZYCA9999Z", "40100999999999", mobile="9000099999", email="info@apexglobal-trading.example",
+                                                        address=INDIA["address"]), SEED + [APEX], "Pending", "Needs review", None),
     ("26_reject_lookalike_name", indian("Globex Foods Private Limited", "GLOCF4567G", "82000123456714", holder="Gl0bex Foods Private Limited"), SEED, "Rejected", None, None),
 ]
 
 
-# The samples in the app: one clean vendor and six edge cases: five named in the Zamp brief (or its payment-fraud risk) and one look-alike trick.
+# The samples in the app: one clean vendor, six edge cases and two review cases: five named in the Zamp brief (or its payment-fraud risk) and one look-alike trick.
 # (sample file, the case in CASES it is written from)
 SAMPLES = [
     ("01_approved_india_clean", "01_approved_india_clean"),                                                 # the happy path
@@ -159,6 +164,8 @@ SAMPLES = [
     ("05_edge_identity_fields_contradict", "19_reject_two_contradictions"),                                 # "subtle inconsistencies when you cross-reference the fields": rejected
     ("06_edge_existing_vendor_changes_bank_account", "11_review_existing_vendor_changes_bank_account"),     # "payment fraud": a reviewer must verify it; submit 01 first
     ("07_edge_lookalike_characters_in_name", "26_reject_lookalike_name"),                                   # "Gl0bex" against "Globex": a zero for an o: rejected outright
+    ("08_review_registered_company_changes_name_and_details", "33_review_registered_id_new_name_and_details"),  # same company ID as an onboarded vendor, new name and details: a reviewer; submit 01 first
+    ("09_review_same_name_different_company_id", "34_review_same_name_different_company_id"),               # same name and address as an onboarded vendor, different company ID: a reviewer; submit 01 first
 ]
 
 

@@ -64,7 +64,8 @@ REASON_LABELS = {
     "DUPLICATE_BANK_ACCOUNT": "Bank account already used by another vendor",
     "SHARED_CONTACT": "Contact details shared with another vendor",
     "EXISTING_VENDOR": "Already-onboarded vendor changed its details",
-    "DUPLICATE_APPLICATION": "Already onboarded with exactly these details",
+    "DUPLICATE_APPLICATION": "Already onboarded with exactly these details (no new application needed)",
+    "SAME_NAME_DIFFERENT_COMPANY_ID": "Same name and other details as an onboarded vendor, but a different company ID",
     "PLACEHOLDER_TAX_ID": "Tax ID is a placeholder, not a real number",
     "REGISTRY_CANCELLED": "Tax registration is cancelled or inactive",
     "REGISTRY_NAME_MISMATCH": "Company name differs from the tax registry",
@@ -138,6 +139,7 @@ EVIDENCE_FIELDS = {
     "NAME_NON_LATIN": NAME_FIELDS,
     "BANK_DETAILS_CHANGED": ["bank_account_number", "bank_code"],
     "IDENTITY_CHANGED_BETWEEN_ATTEMPTS": ["company_name", "tax_id", "pan", "bank_account_number"],
+    "SAME_NAME_DIFFERENT_COMPANY_ID": ["company_name", "mobile", "email", "address", "bank_account_number"],
     # format errors: the vendor is asked to correct exactly these fields (so changing them on the next attempt is expected)
     "BAD_PAN_FORMAT": ["pan"], "BAD_GSTIN_FORMAT": ["tax_id"], "BAD_GSTIN_CHECKSUM": ["tax_id"], "BAD_EIN_FORMAT": ["tax_id"],
     "BAD_VAT_FORMAT": ["tax_id"], "BAD_VAT_CHECKSUM": ["tax_id"], "BAD_IFSC_FORMAT": ["bank_code"], "BAD_ROUTING_FORMAT": ["bank_code"],
@@ -149,6 +151,8 @@ FIX, REVIEW, RED = 1, 2, 3
 
 # The only reason a run is Pending: a person must decide (status name shown everywhere).
 NEEDS_REVIEW = "Needs review"
+# An exact repeat of an onboarded vendor is Approved, but nothing new is created: the vendor is simply told it is already registered.
+ALREADY_REGISTERED = "Already registered"
 
 # Vendors already onboarded before this system started: the duplicate check compares every submission against them.
 VENDORS_ON_FILE = [{
@@ -169,7 +173,6 @@ VENDORS_ON_FILE = [{
 #   3. only mistakes or gaps the vendor can correct (the message lists them);
 #   4. a reviewer's decision (including asking for more information: the vendor then files a new application).
 REJECT_ON_ITS_OWN = {
-    "DUPLICATE_APPLICATION": "your company is already onboarded with exactly these details",
     "SANCTIONS_MATCH": "we are unable to onboard this company",  # deliberately vague: never tell a listed party what matched
     "EMBARGOED_BANK_COUNTRY": "we cannot make payments to a bank in that country",
     "REGISTRY_CANCELLED": "your tax registration is shown as cancelled or inactive",
@@ -205,6 +208,7 @@ VENDOR_REASONS = {
     "REPEATED_ATTEMPTS": "we could not verify the details you gave",
     "IDENTITY_CHANGED_BETWEEN_ATTEMPTS": "we could not verify the details you gave",
     "SERIOUS_EARLIER_REJECTION": "we are unable to onboard this company",
+    "SAME_NAME_DIFFERENT_COMPANY_ID": "we could not match your company name to its tax registration",
 }
 VENDOR_DOCUMENTS = {
     "DUPLICATE_BANK_ACCOUNT": "a bank letter or cancelled cheque showing your company name and account number",
@@ -220,4 +224,5 @@ VENDOR_DOCUMENTS = {
     "REPEATED_ATTEMPTS": "your company registration certificate and a bank letter showing your company name and account number",
     "IDENTITY_CHANGED_BETWEEN_ATTEMPTS": "your company registration certificate and a bank letter showing your company name and account number",
     "SERIOUS_EARLIER_REJECTION": "your company registration certificate and details of its owners",
+    "SAME_NAME_DIFFERENT_COMPANY_ID": "your company registration certificate and tax registration showing your legal name",
 }

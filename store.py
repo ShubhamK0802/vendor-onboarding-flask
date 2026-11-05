@@ -8,7 +8,7 @@ from contextlib import closing
 from datetime import datetime
 
 from checks import company_key
-from config import NEEDS_REVIEW, VENDORS_ON_FILE
+from config import ALREADY_REGISTERED, NEEDS_REVIEW, VENDORS_ON_FILE
 
 DB_PATH = os.environ.get("DB_PATH", "onboarding.db")  # the free host sets :memory: (see render.yaml): its file locking is unreliable and its disk is wiped on restart anyway
 SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "entity_type", "country", "bank_code", "mobile", "email"]
@@ -167,7 +167,7 @@ def final_state(run):
         return {"final": "Rejected", "final_sub": "Information needed by reviewer", "waiting_on": "-"}
     if run["status"] == "Pending":
         return {"final": "Pending", "final_sub": run["sub_status"], "waiting_on": "Reviewer"}
-    return {"final": run["status"], "final_sub": None, "waiting_on": "-"}
+    return {"final": run["status"], "final_sub": run["sub_status"], "waiting_on": "-"}
 
 
 def load_runs():
@@ -189,5 +189,5 @@ def load_runs():
 def known_vendors(runs):
     """What the duplicate check compares against: the vendors on file plus everything finally approved (by the rules or a reviewer)."""
     approved = [{"company_key": company_key(r["payload"]), "company_name": r["company"], "bank_account_number": r["payload"].get("bank_account_number"),
-                 "mobile": r["payload"].get("mobile"), "email": r["payload"].get("email"), "address": r["payload"].get("address")} for r in runs if r["final"] == "Approved"]
+                 "mobile": r["payload"].get("mobile"), "email": r["payload"].get("email"), "address": r["payload"].get("address")} for r in runs if r["final"] == "Approved" and r["sub_status"] != ALREADY_REGISTERED]
     return query("SELECT * FROM vendors") + approved

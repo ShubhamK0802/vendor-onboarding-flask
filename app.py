@@ -33,6 +33,7 @@ DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT r
 LEVELS = {1: "Vendor can fix", 2: "Needs review", 3: "Contradiction"}
 COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red"}
 SAMPLE_HINTS = {"06_edge_existing_vendor_changes_bank_account.json": "submit 01 first",
+                "08_review_registered_company_changes_name_and_details.json": "submit 01 first: a reviewer decides", "09_review_same_name_different_company_id.json": "submit 01 first: a reviewer decides",
                 "02b_corrected_incomplete_form_completed.json": "the fix for 02: approved", "03b_corrected_tax_id_for_country.json": "the fix for 03: approved",
                 "04b_corrected_bank_holder_name_matches.json": "the fix for 04: approved", "05b_corrected_identity_fields_consistent.json": "the fix for 05: approved",
                 "07b_corrected_lookalike_name_spelled_right.json": "the fix for 07: approved alone, but a reviewer decides if 07 was submitted first"}
@@ -153,6 +154,8 @@ def worker(token, submission, files):
         known, stages, started = store.known_vendors(history), [], time.perf_counter()
         for stage in iter_stages(submission, known, history):
             stages.append(stage)
+            if stage["stage"] == "repeat_attempts":  # an internal control for staff: recorded, but never shown to the vendor
+                continue
             progress["stages"].append({"name": stage["stage"].replace("_", " "), "status": stage["status"],
                                        "detail": stage.get("note") or (f"{len(stage['findings'])} found" if stage["findings"] else "")})
             time.sleep(STAGE_PAUSE)

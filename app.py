@@ -351,14 +351,12 @@ def reset():
     return redirect(url_for("submit_page"))
 
 
-@app.get("/debug/threads")  # TEMPORARY diagnostic: remove
-def debug_threads():
-    import sys, traceback
-    return Response(("\n").join(f"--- {t}" + "".join(traceback.format_stack(f)) for t, f in sys._current_frames().items()), mimetype="text/plain")
-
-
-if os.environ.get("MAIL_WORKER", "1") == "1":  # the tests switch it off and drive the sender by hand
-    mailer.start_background()
+@app.before_request
+def start_mail_worker():
+    """Started on the first request, not at import: if the host forks the app after import, a thread started earlier is gone in the child while the
+    lock it held stays locked for ever (the app then hangs). The tests switch the worker off and drive the sender by hand."""
+    if os.environ.get("MAIL_WORKER", "1") == "1":
+        mailer.start_background()  # does nothing after the first call
 
 
 if __name__ == "__main__":

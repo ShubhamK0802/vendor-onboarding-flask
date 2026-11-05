@@ -103,6 +103,8 @@ FIELD_LABELS = {
     "email": "Email",
 }
 
+DOC_LABELS = {"tax_document": "Tax document", "registration": "Registration document", "voided_cheque": "Voided cheque", "passbook": "Passbook page"}
+
 NAME_FIELDS = ["company_name", "bank_account_name"]
 
 EVIDENCE_FIELDS = {

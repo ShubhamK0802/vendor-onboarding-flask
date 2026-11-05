@@ -151,7 +151,7 @@ The vendor is never told what matched a sanctions list, which other vendor was i
 |---|---|
 | Approved | "Your application is approved." |
 | Needs review | "Your application is under review. We will reach back to you if anything is needed." |
-| Rejected: only mistakes or gaps | "Your application is rejected because:" then a numbered list of what is wrong, then "Please correct these and submit a new application." |
+| Rejected: only mistakes or gaps | "Your application is rejected. We found these problems:" then a numbered list (for example "Tax ID is missing", "The file in the Registration document field is a different document: upload your registration document there"), then "Please correct these and submit a new application." |
 | Rejected: a rule | "Your application is rejected because <safe reason>. If this was a mistake, submit a new application." |
 
 A reviewer's decision produces the same wording automatically, built from what the checks found (`VENDOR_REASONS`, `VENDOR_DOCUMENTS`); the reviewer types nothing. All messages for one application go in the same mail thread ("Re: …").

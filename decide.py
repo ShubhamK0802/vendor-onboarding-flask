@@ -14,9 +14,9 @@ def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
         return "Your application is under review. We will reach back to you if anything is needed."
     if reject_reasons:
         return "Your application is rejected because " + "; ".join(reject_reasons) + ". If this was a mistake, submit a new application."
-    if len(fixes) == 1:  # only mistakes or gaps the vendor can correct: say exactly what, and that a new application is the way forward
-        return f"Your application is rejected because: {fixes[0]}\nPlease correct this and submit a new application."
-    return "Your application is rejected because:\n" + "\n".join(f"{i}. {fix}" for i, fix in enumerate(fixes, 1)) + "\nPlease correct these and submit a new application."
+    problems = "this problem" if len(fixes) == 1 else "these problems"  # only mistakes or gaps the vendor can correct: what is wrong, then what to do
+    listed = "\n".join(f"{i}. {fix}" for i, fix in enumerate(fixes, 1))
+    return f"Your application is rejected. We found {problems}:\n{listed}\nPlease correct {'it' if len(fixes) == 1 else 'these'} and submit a new application."
 
 
 def decide(stage_results):

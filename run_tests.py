@@ -146,8 +146,8 @@ check(run(first_k)["vendor_id"] and run(first_k)["vendor_id"] != run(other_k)["v
 
 # ---- the vendor message is short and to the point
 two = run_pipeline(dict(quartz, bank_account_name="Zenith Traders", documents=dict(quartz["documents"], voided_cheque=None)), [])["vendor_message"]
-check(two == "Your application is rejected because:\n1. Upload a voided cheque or passbook page\n2. Use a bank account in your company's name, or attach a signed authorisation letter\nPlease correct these and submit a new application." and len(two) < 220, "vendor message: two fixes are a short numbered list, then what to do")
-check(run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"].startswith("Your application is rejected because"), "vendor message: starts with the rejection and its reason")
+check(two == "Your application is rejected. We found these problems:\n1. Bank proof is missing: upload a voided cheque or passbook page\n2. Use a bank account in your company's name, or attach a signed authorisation letter\nPlease correct these and submit a new application.", "vendor message: two problems are a short numbered list, then what to do")
+check(run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"].startswith("Your application is rejected. We found"), "vendor message: starts with the rejection and what was found")
 
 check(outcome(dict(quartz, tax_id="123456789")) == ("Rejected", None) and "submit a new application" in run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"], "status definitions: one contradiction alone (tax ID of another country) is rejected, and the vendor is told to correct it and apply again")
 check(outcome(dict(quartz, pan="ZZZZZ9999Z")) == ("Rejected", None), "status definitions: two contradictions at once are rejected")
@@ -255,7 +255,7 @@ check(b"No submissions yet" in client.get("/dashboard").data, "web: reset emptie
 
 # a near-miss name: rejected with what to correct; the vendor files a new application
 first = run_case("09_fix_near_miss_name")["run_id"]
-check(run(first)["final"] == "Rejected" and b"match your company name exactly" in client.get(f"/run/{first}").data and b"Please correct this and submit a new application." in client.get(f"/run/{first}").data,
+check(run(first)["final"] == "Rejected" and b"match your company name exactly" in client.get(f"/run/{first}").data and b"Please correct it and submit a new application." in client.get(f"/run/{first}").data,
       "web: a near-miss name is rejected, and the vendor is told what to correct and to submit a new application")
 check(b"Waiting for vendor" not in client.get("/dashboard").data and b"With the vendor now" not in client.get("/dashboard").data, "web: the dashboard has no waiting-for-vendor state")
 
@@ -330,7 +330,7 @@ reviewing = run_case("12_review_bank_account_shared_with_another_vendor")["run_i
 mailer.deliver_queued()
 page = client.get("/messages").data.decode()
 check("Simulated: no mail service" in page and "accounts@apexglobal.example" in page and "Sent (simulated)" in page and page.count("Your application is approved.") == 1, "messages: the page says the mail service is simulated, shows who it is to, and the status of each message")
-check("Your application is under review. We will reach back to you if anything is needed." in page and "Please correct this and submit a new application." in page and "Reminder" not in page,
+check("Your application is under review. We will reach back to you if anything is needed." in page and "Please correct it and submit a new application." in page and "Reminder" not in page,
       "messages: under review and the rejection with what to correct both went out, and no reminder")
 shown_to_vendor = "Your application is under review. We will reach back to you if anything is needed."
 check(shown_to_vendor in client.get(f"/run/{reviewing}").data.decode() and shown_to_vendor not in client.get(f"/review?run={reviewing}").data.decode()
@@ -422,6 +422,12 @@ client.post("/reset")
 alone = run_web(mode="sample", sample="07b_corrected_lookalike_name_spelled_right.json")["run_id"]
 check(run(alone)["final"] == "Approved", "corrected sample: 07b on its own is approved")
 client.post("/reset")
+
+# ---- the vendor message for an incomplete form is plain and specific
+from samples import incomplete_form
+text = run_pipeline(incomplete_form(), [])["vendor_message"]
+check(text == "Your application is rejected. We found these problems:\n1. Email is missing\n2. Tax ID is missing\n3. Bank proof is missing: upload a voided cheque or passbook page\n"
+      "4. The file in the Registration document field is a different document: upload your registration document there\nPlease correct these and submit a new application.", "vendor message: an incomplete form lists plainly what is missing and where to upload", text)
 
 # ---- repeat attempts: a fix is a new application, and trial and error is caught
 from datetime import datetime as _dt

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from rapidfuzz import fuzz
 
 from config import (
-    ALLOWED_FILE_TYPES, ATTEMPT_WINDOW_DAYS, ATTEMPTS_BEFORE_REVIEW, BANK_PROOF_DOCS, EVIDENCE_FIELDS, FIX, NAME_LINK_SCORE, REJECT_ON_ITS_OWN, LEGAL_FORMS, NAME_REVIEW_THRESHOLD, PAN_HOLDER_CODES, RED,
+    ALLOWED_FILE_TYPES, ATTEMPT_WINDOW_DAYS, ATTEMPTS_BEFORE_REVIEW, BANK_PROOF_DOCS, DOC_LABELS, EVIDENCE_FIELDS, FIELD_LABELS, FIX, NAME_LINK_SCORE, REJECT_ON_ITS_OWN, LEGAL_FORMS, NAME_REVIEW_THRESHOLD, PAN_HOLDER_CODES, RED,
     REQUIRED_BY_COUNTRY, REQUIRED_DOCS, REQUIRED_FIELDS, REVIEW, STRICT_SUFFIX_MATCH, SUPPORTED_COUNTRIES, EMBARGOED_COUNTRIES,
 )
 from normalize import clean_value, core_name, normalize_id, normalize_name
@@ -28,12 +28,16 @@ def label(slot):
     return slot.replace("_", " ")
 
 
+def doc_label(slot):
+    return DOC_LABELS.get(slot, label(slot).capitalize())
+
+
 # ---- 1. completeness and 2. country routing -------------------------------------------------
 
 def check_completeness(submission):
     required = REQUIRED_FIELDS + REQUIRED_BY_COUNTRY.get(normalize_id(submission.get("country")), [])
     return make_result("completeness", [
-        make_finding("MISSING_FIELD", FIX, f"Enter your {label(f)}")
+        make_finding("MISSING_FIELD", FIX, f"{FIELD_LABELS.get(f, label(f).capitalize())} is missing")
         for f in required if clean_value(submission.get(f)) is None
     ])
 
@@ -199,22 +203,22 @@ def check_formats(submission):
 def check_documents(submission):
     documents = submission.get("documents")
     documents = documents if isinstance(documents, dict) else {}
-    findings = [make_finding("MISSING_DOCUMENT", FIX, f"Upload the {label(slot)}") for slot in REQUIRED_DOCS if not documents.get(slot)]
+    findings = [make_finding("MISSING_DOCUMENT", FIX, f"{doc_label(slot)} is missing: please upload it") for slot in REQUIRED_DOCS if not documents.get(slot)]
     if not any(documents.get(slot) for slot in BANK_PROOF_DOCS):
-        findings.append(make_finding("MISSING_BANK_PROOF", FIX, "Upload a voided cheque or passbook page"))
+        findings.append(make_finding("MISSING_BANK_PROOF", FIX, "Bank proof is missing: upload a voided cheque or passbook page"))
     for slot, doc in documents.items():
         if not doc:
             continue
         if not isinstance(doc, dict):
-            findings.append(make_finding("MALFORMED_DOCUMENT", FIX, f"Upload the {label(slot)} again (unreadable)"))
+            findings.append(make_finding("MALFORMED_DOCUMENT", FIX, f"{doc_label(slot)} could not be read: upload it again"))
             continue
         file_type = str(doc.get("file_type", "")).lower().lstrip(".")
         if file_type not in ALLOWED_FILE_TYPES:
-            findings.append(make_finding("BAD_FILE_TYPE", FIX, f"{label(slot).capitalize()} must be a PDF, PNG or JPG"))
+            findings.append(make_finding("BAD_FILE_TYPE", FIX, f"{doc_label(slot)} must be a PDF, PNG or JPG"))
         if not doc.get("size_bytes"):
-            findings.append(make_finding("EMPTY_FILE", FIX, f"{label(slot).capitalize()} file is empty: upload it again"))
+            findings.append(make_finding("EMPTY_FILE", FIX, f"{doc_label(slot)} file is empty: upload it again"))
         if doc.get("declared_type") != slot:
-            findings.append(make_finding("WRONG_SLOT", FIX, f"The {label(slot)} is the wrong document type: upload the right one"))
+            findings.append(make_finding("WRONG_SLOT", FIX, f"The file in the {doc_label(slot)} field is a different document: upload your {doc_label(slot).lower()} there"))
     return make_result("documents", findings)
 
 

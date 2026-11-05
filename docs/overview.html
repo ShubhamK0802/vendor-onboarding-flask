@@ -1,0 +1,117 @@
+<!doctype html><meta charset="utf-8"><title>Vendor onboarding: workflow and mind map</title>
+<style>body{background:#fff;color:#111;font-family:Arial,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px}h2{margin-top:40px}</style>
+<h2>1. End to end</h2><pre class="mermaid">flowchart TD
+    A[Vendor submits form or JSON] --> B[Pipeline: 8 stages]
+    B --> C{Decision rule}
+    C -->|no findings| D[Approved + vendor ID]
+    C -->|only fixable findings| E[Pending: Vendor to fix]
+    C -->|needs judgment| F[Pending: Needs review]
+    C -->|rejects on its own / 2 red flags / repeated| G[Rejected]
+    E -->|vendor resubmits within 7 days| B
+    E -->|no reply in 7 days| G
+    E -->|3 days, no reply| R[Reminder mail]
+    F --> H[Reviewer takes the case]
+    H -->|approve| D
+    H -->|reject| G
+    H -->|ask for info| E
+    D --> M[Mail to vendor]
+    E --> M
+    F --> M
+    G --> M
+</pre><h2>2. The pipeline</h2><pre class="mermaid">flowchart LR
+    S1[1 Completeness] --> S2[2 Country routing] --> S3[3 Format checks] --> S4[4 Documents]
+    S4 --> S5[5 Identity checks] --> S6[6 Name match] --> S7[7 Verification] --> S8[8 Duplicate check]
+    S8 --> D[Decision]
+</pre><h2>3. Resubmission</h2><pre class="mermaid">sequenceDiagram
+    participant V as Vendor
+    participant S as System
+    participant R as Reviewer
+    V->>S: Submit (run A)
+    S-->>V: Pending: please fix 1..n (mail)
+    V->>S: Resubmit with parent = A
+    S->>S: Run pipeline, compare with A's findings
+    alt fixed
+        S-->>V: Approved or under review
+    else same finding still there
+        S-->>V: Rejected: not fixed after resubmission
+    else NAME_MISMATCH repeated
+        S->>R: Needs review (read the vendor's explanation)
+    end
+    S->>S: Mark A as Replaced
+</pre><h2>4. Reviewer desk</h2><pre class="mermaid">flowchart TD
+    Q[Queue: Needs review] --> T[Take: claimed by one reviewer]
+    T --> V[Read findings, evidence, documents]
+    V --> X{Decide}
+    X -->|Approve| AP[Approved + vendor ID]
+    X -->|Reject| RJ[Rejected]
+    X -->|Request info| RI[Pending: Vendor to fix]
+    V -->|Give back| Q
+</pre><h2>5. Mail</h2><pre class="mermaid">flowchart LR
+    E[Decision made] --> O[Outbox: queued]
+    O --> W[Background sender]
+    W -->|demo mode| SIM["Sent (simulated)"]
+    W -->|Brevo configured + allowlisted| BR["Sent (real)"]
+    W -->|error| F[Failed]
+    O -->|no address| N[No address]
+</pre><h2>Mind map</h2><pre class="mermaid">mindmap
+  root((Vendor onboarding))
+    Intake
+      Form with PDFs
+      JSON file
+      7 samples
+      Resubmission
+    Pipeline
+      1 Completeness
+      2 Country routing
+        India
+        US
+        Germany
+      3 Format checks
+        GSTIN PAN IFSC
+        EIN routing
+        VAT IBAN BIC
+      4 Documents
+        Tax
+        Registration
+        Bank proof
+      5 Identity checks
+      6 Name match
+      7 Verification
+        Registry
+        Sanctions
+        Embargo
+        Placeholder ID
+      8 Duplicates
+    Decision
+      Approved
+      Pending
+        Vendor to fix
+        Needs review
+      Rejected
+        Rejects on its own
+        Two red flags
+        Not fixed
+        7 days silent
+    Fraud defences
+      Look-alike characters
+      Hidden characters
+      Bank change
+      Shared contact
+      Duplicate account
+    People
+      Vendor
+      Reviewer
+        Take
+        Decide
+        Request info
+    Mail
+      Outbox
+      Background sender
+      One thread
+      Reminder 3 days
+    Evidence
+      Dashboard
+      CSV export
+      156 tests
+      Demo kit
+</pre><script type="module">import m from "https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs";m.initialize({startOnLoad:true});</script>

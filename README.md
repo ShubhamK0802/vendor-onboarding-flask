@@ -43,7 +43,7 @@ Submit the edge case, then its corrected version. Submit **01** first for 06, 08
 `checks.py` rules · `decide.py` verdict · `config.py` rule tables and wording · `store.py` SQLite · `mailer.py` outbox and sender · `app.py` routes · `templates/` pages · `static/` CSS and live-view JS · `samples.py` demo data and test cases · `run_tests.py` all checks.
 
 ## Hosting
-`gunicorn app:app --workers 1 --threads 4` (see `Procfile`, `render.yaml`). Keep one worker: live-run progress is held in memory. Set `DB_PATH` to choose the database file (`render.yaml` uses `:memory:` on the free host, so data resets on restart). Always run `python run_tests.py` locally before pushing.
+`gunicorn app:app --workers 1 --threads 4` (see `render.yaml`). Keep one worker: live-run progress is held in memory. Set `DB_PATH` to choose the database file (`render.yaml` uses `:memory:` on the free host, so data resets on restart). Always run `python run_tests.py` locally before pushing.
 
 **Verification data:** `registry.json` (simulated tax registry) and `sanctions.json` (fictional watchlist) are demo data written by `python samples.py`; set `VIES_LIVE=1` to check German VAT IDs against the real EU VIES service.
 

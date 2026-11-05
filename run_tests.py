@@ -12,9 +12,8 @@ import store
 
 os.environ["MAIL_WORKER"] = "0"  # the background sender is driven by hand in the tests
 from decide import parse_submission, run_pipeline
-from datetime import datetime, timedelta
 
-from samples import APEX, CASES, CORRECTED, SAMPLES, SEED, INDIA, american, fresh, indian, make_iban, short_tax_id
+from samples import APEX, CASES, CORRECTED, SAMPLES, SEED, INDIA, american, fresh, indian, make_iban
 
 store.DB_PATH = os.path.join(tempfile.mkdtemp(), "test.db")
 failed = []
@@ -502,7 +501,6 @@ check(sum(1 for r in store.load_runs() if r["final"] == "Rejected") == 2, "attem
 store.reset()
 
 # ---- repeat attempts: a fix is a new application, and trial and error is caught
-from datetime import datetime as _dt
 import checks as _checks
 tries = []
 base = fresh(copy.deepcopy(INDIA), "Ember Textiles Private Limited", "EMBCT5678E", "70100234567891")

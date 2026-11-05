@@ -6,13 +6,13 @@ import os
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import Counter, defaultdict
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))  # the database and sample_inputs are found next to this file
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, url_for, Response  # noqa: E402
-from markupsafe import Markup, escape  # noqa: E402
+from markupsafe import Markup  # noqa: E402
 
 import mailer  # noqa: E402
 import store  # noqa: E402

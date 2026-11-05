@@ -8,6 +8,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.3
+      - key: DB_PATH
+        value: ":memory:"
       - key: SECRET_KEY
         generateValue: true
       - key: BREVO_API_KEY

@@ -1,4 +1,5 @@
 """All persistence in one SQLite file (stdlib). Raw submissions stay in the DB; everything shown in the UI is masked."""
+import os
 import uuid
 import json
 import sqlite3
@@ -9,7 +10,7 @@ from datetime import datetime
 from checks import company_key
 from config import NEEDS_REVIEW, VENDORS_ON_FILE
 
-DB_PATH = "onboarding.db"
+DB_PATH = os.environ.get("DB_PATH", "onboarding.db")  # the free host sets :memory: (see render.yaml): its file locking is unreliable and its disk is wiped on restart anyway
 SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "entity_type", "country", "bank_code", "mobile", "email"]
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, country TEXT, status TEXT, sub_status TEXT,

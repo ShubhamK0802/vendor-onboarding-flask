@@ -2,9 +2,9 @@ import json
 
 from checks import (
     check_completeness, check_country, check_formats, check_documents,
-    check_identity, check_name_match, check_verification, check_duplicates,
+    check_identity, check_name_match, check_verification, check_duplicates, check_attempts,
 )
-from config import ESCALATE_TO_REVIEW, FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION, VENDOR_TO_FIX
+from config import FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION, VENDOR_TO_FIX
 
 
 def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
@@ -18,29 +18,23 @@ def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
     if not fixes:
         return head
     todo = f"Please fix: {fixes[0]}" if len(fixes) == 1 else "Please fix:\n" + "\n".join(f"{i}. {fix}" for i, fix in enumerate(fixes, 1))
+    todo += "\nThen send us a new application with these corrected."
     return f"{head}\n{todo}" if head else todo
 
 
-def decide(stage_results, previous=()):
-    """previous: (code, message) pairs from the run this one replaces. A finding the vendor was already asked to fix and still has is unresolved."""
+def decide(stage_results):
     findings = []
     for result in stage_results:
         findings += result["findings"]
     levels = [finding["level"] for finding in findings]
     red_flags = levels.count(RED)
-    unresolved = [f for f in findings if f["level"] in (FIX, RED) and (f["code"], f["message"]) in set(previous)]
-    escalated = [f for f in unresolved if f["code"] in ESCALATE_TO_REVIEW]
-    stuck = [f for f in unresolved if f["code"] not in ESCALATE_TO_REVIEW]
-    reject_reasons = [REJECT_ON_ITS_OWN[f["code"]] for f in findings if f["code"] in REJECT_ON_ITS_OWN]
-    reject_reasons = list(dict.fromkeys(reject_reasons))
-    if stuck:
-        reject_reasons.append("these were not fixed after your resubmission: " + "; ".join(f["message"] for f in stuck))
+    reject_reasons = list(dict.fromkeys(REJECT_ON_ITS_OWN[f["code"]] for f in findings if f["code"] in REJECT_ON_ITS_OWN))
 
     if not findings:
         status, sub_status = "Approved", None
     elif reject_reasons or red_flags >= 2:  # a lone contradiction is a typo the vendor can fix; two at once are not
         status, sub_status = "Rejected", None
-    elif REVIEW in levels or escalated:
+    elif REVIEW in levels:
         status, sub_status = "Pending", NEEDS_REVIEW
     else:
         status, sub_status = "Pending", VENDOR_TO_FIX
@@ -48,9 +42,7 @@ def decide(stage_results, previous=()):
     if status == "Rejected" and red_flags >= 2:
         reject_reasons.append("the details you gave contradict each other")
     fixes = [f["message"] for f in findings if f["level"] in (FIX, RED)]
-    reviewer_notes = [f["message"] for f in findings if f["level"] >= REVIEW or f in escalated]
-    if escalated:
-        reviewer_notes.append("The vendor was asked to fix this and sent it again, so a person should read their explanation or letter.")
+    reviewer_notes = [f["message"] for f in findings if f["level"] >= REVIEW]
     return {
         "status": status,
         "sub_status": sub_status,
@@ -60,7 +52,7 @@ def decide(stage_results, previous=()):
     }
 
 
-def iter_stages(submission, existing_vendors):
+def iter_stages(submission, existing_vendors, history=()):
     yield check_completeness(submission)
     yield check_country(submission)
     yield check_formats(submission)
@@ -69,17 +61,18 @@ def iter_stages(submission, existing_vendors):
     yield check_name_match(submission)
     yield check_verification(submission)
     yield check_duplicates(submission, existing_vendors)
+    yield check_attempts(submission, history)
 
 
-def build_decision(stages, previous=()):
-    decision = decide(stages, previous)
+def build_decision(stages):
+    decision = decide(stages)
     decision["stages"] = stages
     decision["rule_version"] = RULE_VERSION
     return decision
 
 
-def run_pipeline(submission, existing_vendors, previous=()):
-    return build_decision(list(iter_stages(submission, existing_vendors)), previous)
+def run_pipeline(submission, existing_vendors, history=()):
+    return build_decision(list(iter_stages(submission, existing_vendors, history)))
 
 def parse_submission(text):
     try:

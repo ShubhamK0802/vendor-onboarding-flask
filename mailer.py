@@ -37,7 +37,7 @@ def decision_mail(run, decision):
         return "Rejected", "Your application is rejected because " + "; ".join(reasons) + "."
     documents = unique(VENDOR_DOCUMENTS[c] for c in run["codes"] if c in VENDOR_DOCUMENTS) or ["documents that confirm your company's identity and bank details"]
     return "More information needed", ("We need these from you to validate your information and continue with your application:\n"
-                                       + "\n".join(f"{i}. {d}" for i, d in enumerate(documents, 1)) + "\nPlease resubmit with them on the Onboard vendor page.")
+                                       + "\n".join(f"{i}. {d}" for i, d in enumerate(documents, 1)) + "\nPlease send a new application with them on the Onboard vendor page.")
 
 
 # ---------------------------------------------------------------- the outbox

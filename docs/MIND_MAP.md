@@ -7,7 +7,7 @@ mindmap
       Form with PDFs
       JSON file
       7 samples
-      Resubmission
+      New application after a fix
     Pipeline
       1 Completeness
       2 Country routing
@@ -30,15 +30,15 @@ mindmap
         Embargo
         Placeholder ID
       8 Duplicates
+      9 Repeat attempts
     Decision
       Approved
       Pending
-        Vendor to fix
+        Waiting for vendor
         Needs review
       Rejected
         Rejects on its own
         Two red flags
-        Not fixed
         7 days silent
     Fraud defences
       Look-alike characters
@@ -46,6 +46,8 @@ mindmap
       Bank change
       Shared contact
       Duplicate account
+      Repeat attempts
+      Rate limit
     People
       Vendor
       Reviewer
@@ -60,6 +62,6 @@ mindmap
     Evidence
       Dashboard
       CSV export
-      156 tests
+      168 tests
       Demo kit
 ```

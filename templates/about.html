@@ -24,7 +24,7 @@
     <thead><tr><th>Status</th><th>The test</th><th>What happens next</th></tr></thead>
     <tbody>
       <tr><td><b>Approved</b></td><td>Every rule positively checked out.</td><td>The vendor can be paid.</td></tr>
-      <tr><td><b>Pending: Vendor to fix</b></td><td>A mistake or gap in what the vendor sent, which the system can re-check by itself once corrected.</td><td>The vendor gets the exact fixes and resubmits. No human is involved.</td></tr>
+      <tr><td><b>Pending: Waiting for vendor</b></td><td>A mistake or gap in what the vendor sent, which the system can re-check by itself once corrected.</td><td>The vendor gets the exact fixes and sends a new application. No human is involved.</td></tr>
       <tr><td><b>Pending: Needs review</b></td><td>The answer depends on something only our staff have: our records, a call to a number already on file, or judgment. Retyping would not settle it.</td><td>A reviewer decides. The vendor is told it is under review.</td></tr>
       <tr><td><b>Rejected</b></td><td>It cannot be approved as submitted, and neither a correction nor a review would change that. The application is closed.</td><td>The vendor is told a safe reason and may start a new application.</td></tr>
     </tbody>
@@ -38,14 +38,13 @@
     <li><b>The tax registration is cancelled</b> in the registry.</li>
     <li><b>The tax ID is a placeholder</b> such as 12-3456789 or all the same digit.</li>
     <li><b>Look-alike tricks:</b> a letter O for a 0 or an I or l for a 1 in an ID or account number, hidden characters, letters of another alphabet mixed into a word, or two names that differ only in look-alike characters (g00gle and google). These are rejected outright, not sent back. Honest digits in a name (34square, add360) are fine: names are only compared with each other.</li>
-    <li><b>Still wrong after a second attempt:</b> the vendor was asked to fix something and resubmits with the same problem (for example a near-miss name, where a lookalike name is a known fraud tactic).</li>
     <li><b>No reply within {{ fix_deadline_days }} days</b> to a fix request: the submission closes by itself.</li>
     <li><b>A reviewer rejects it.</b></li>
   </ul>
   <p>Anything the system cannot positively verify is never approved automatically.</p>
 
   <h2>How the checks are sorted</h2>
-  <p>Eight checks run in order: completeness, country routing, format checks, documents, identity checks, name match, verification (registry, sanctions, embargo, placeholder IDs), duplicate check. Each finding is one of three kinds:</p>
+  <p>Nine checks run in order: completeness, country routing, format checks, documents, identity checks, name match, verification (registry, sanctions, embargo, placeholder IDs), duplicate check, repeat attempts. Each finding is one of three kinds:</p>
   <ul>
     <li><b>Vendor can fix</b>: a missing field or document, a typo in a format, a name that nearly matches the bank account holder, a legal form that differs (LLP vs Private Limited).</li>
     <li><b>Needs review</b>: a bank account already used by another vendor, a possible sanctions-list match, an onboarded vendor whose bank account or details changed, a company ID under a different name, a shared phone or email, a foreign bank account, an unsupported country, names in a non-Latin script.</li>
@@ -62,7 +61,8 @@
   <ul>
     <li>A reviewer's decision becomes the vendor's current status; the rules' original verdict is kept next to it.</li>
     <li><i>Request more info</i> keeps the submission open, waiting for the vendor.</li>
-    <li>A corrected <b>resubmission</b> is linked to the earlier submission, which is then marked replaced. The new submission is also checked against what the vendor was asked to fix.</li>
+    <li><b>Repeat attempts</b> are counted across applications (same company ID, bank account, phone, email, near-identical name, or the same uploaded file, within 30 days). From the 4th attempt, or when the bank account, tax ID, PAN or company name changes without being asked, a person decides, even if the new form is perfect. Too many submissions from one network in an hour are refused. If the applicant changes every detail, nothing links the attempts: real registry and bank checks are the answer in production.</li>
+    <li>There is no resubmission. A vendor who is sent back files a <b>new application</b>, and it is checked from scratch: nothing is pre-filled or carried over. When the same applicant files again, the earlier waiting application is marked replaced.</li>
     <li>Every update goes to the vendor <b>automatically</b>, in one email thread per application. Messages are saved in an outbox and sent by a background worker; the <b>Messages</b> page shows each one with its status. First the verdict, for example "your application is under review, we will reach back to you if anything is needed"; then the reviewer's outcome in the same thread: approved, rejected with the reason, or the list of documents we need. The reasons and document lists are worked out from what the checks found, so the reviewer types nothing, and nothing about other vendors is revealed.</li>
     <li>Approved vendors join the list the duplicate check compares against. An already-onboarded company that applies again with nothing new is rejected as a duplicate; if its bank account, contact details or address changed, a reviewer verifies the change (a bank change by calling the number already on file).</li>
   </ul>

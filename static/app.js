@@ -1,4 +1,4 @@
-// Submit page only: tabs, resubmission prefill, and the live verification progress (polls the server while the checks run).
+// Submit page only: tabs and the live verification progress (polls the server while the checks run).
 const $ = (s) => document.querySelector(s);
 
 if ($('#stages')) {
@@ -9,15 +9,6 @@ if ($('#stages')) {
     document.querySelectorAll('.tab').forEach((t) => (t.hidden = t.id !== btn.dataset.tab));
   }));
 
-  $('#parent').addEventListener('change', async (e) => {
-    $('#parent-note').hidden = !e.target.value;
-    if (!e.target.value) return;
-    const values = await (await fetch(`/api/prefill/${e.target.value}`)).json();
-    for (const [name, value] of Object.entries(values)) $(`#tab-form [name=${name}]`).value = value;
-    $('#tab-form [name=bank_account_number]').value = '';
-    document.querySelector('[data-tab=tab-form]').click();
-  });
-
   const show = (stages) => {
     $('#stages').innerHTML = stages.map((s) =>
       `<li><span class="dot ${s.status}">${ICON[s.status]}</span><div><b>${s.name}</b> <span class="muted">${s.status}${s.detail ? ' · ' + s.detail : ''}</span></div></li>`).join('');
@@ -27,7 +18,6 @@ if ($('#stages')) {
     const buttons = document.querySelectorAll('form.tab button.primary');
     const data = new FormData(form);
     data.set('mode', form.dataset.mode);
-    data.set('parent', $('#parent').value);
     $('#error').hidden = true;
     const reply = await fetch('/api/submit', { method: 'POST', body: data });
     const started = await reply.json();
@@ -51,9 +41,6 @@ if ($('#stages')) {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     buttons.forEach((b) => (b.disabled = false));
-    $('#parent').querySelectorAll('option').forEach((o) => { if (o.value === $('#parent').value && o.value) o.remove(); });
-    $('#parent').value = '';
-    $('#parent-note').hidden = true;
   }
 
   document.querySelectorAll('form.tab').forEach((form) => form.addEventListener('submit', (e) => { e.preventDefault(); run(form); }));

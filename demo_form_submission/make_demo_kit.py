@@ -144,7 +144,7 @@ On the **JSON file** tab, upload `vendor_submission.json`. It carries the same v
 ## Make it interesting: change one thing and submit again
 | Change | What you should see |
 |---|---|
-| Bank account holder: `Horizon Textile Private Limited` (one letter off) | Sent back to the vendor to fix; submit again as a resubmission and it is rejected |
+| Bank account holder: `Horizon Textile Private Limited` (one letter off) | Sent back to the vendor. Fix it and submit a new application: it is approved. (A 4th try for the same company goes to a reviewer, even if perfect.) |
 | Bank account number: replace a 0 with the letter `O` | Rejected outright: look-alike characters |
 | Leave the tax ID empty and upload no cheque | Sent back to the vendor with a numbered list |
 | Submit the exact same form a second time | Rejected as a duplicate (the company is already onboarded) |

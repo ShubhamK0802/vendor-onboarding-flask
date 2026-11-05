@@ -1,4 +1,4 @@
-RULE_VERSION = "5.0"
+RULE_VERSION = "6.0"
 
 REQUIRED_FIELDS = [
     "company_name", "entity_type", "country", "email", "mobile",
@@ -85,6 +85,9 @@ REASON_LABELS = {
     "BANK_COUNTRY_DIFFERS": "Bank is in a different country than the company",
     "NAME_NON_LATIN": "A name is not in Latin letters, so it cannot be compared",
     "BANK_DETAILS_CHANGED": "Bank account differs from the one on file",
+    "REPEATED_ATTEMPTS": "Many earlier attempts by the same applicant",
+    "IDENTITY_CHANGED_BETWEEN_ATTEMPTS": "Identity details changed between attempts, without being asked",
+    "SERIOUS_EARLIER_REJECTION": "An earlier attempt was stopped for a serious reason",
 }
 
 FIELD_LABELS = {
@@ -132,13 +135,19 @@ EVIDENCE_FIELDS = {
     "BANK_COUNTRY_DIFFERS": ["bank_account_number", "bank_code"],
     "NAME_NON_LATIN": NAME_FIELDS,
     "BANK_DETAILS_CHANGED": ["bank_account_number", "bank_code"],
+    "IDENTITY_CHANGED_BETWEEN_ATTEMPTS": ["company_name", "tax_id", "pan", "bank_account_number"],
+    # format errors: the vendor is asked to correct exactly these fields (so changing them on the next attempt is expected)
+    "BAD_PAN_FORMAT": ["pan"], "BAD_GSTIN_FORMAT": ["tax_id"], "BAD_GSTIN_CHECKSUM": ["tax_id"], "BAD_EIN_FORMAT": ["tax_id"],
+    "BAD_VAT_FORMAT": ["tax_id"], "BAD_VAT_CHECKSUM": ["tax_id"], "BAD_IFSC_FORMAT": ["bank_code"], "BAD_ROUTING_FORMAT": ["bank_code"],
+    "BAD_ROUTING_CHECKSUM": ["bank_code"], "BAD_IBAN_FORMAT": ["bank_account_number"], "BAD_IBAN_CHECKSUM": ["bank_account_number"],
+    "BAD_BIC_FORMAT": ["bank_code"],
 }
 # Finding severity: FIX = vendor can fix it, REVIEW = needs human judgment, RED = identity red flag
 FIX, REVIEW, RED = 1, 2, 3
 
 # The two reasons a run can be Pending (status names shown everywhere).
 NEEDS_REVIEW = "Needs review"
-VENDOR_TO_FIX = "Vendor to fix"
+VENDOR_TO_FIX = "Waiting for vendor"
 
 # Vendors already onboarded before this system started: the duplicate check compares every submission against them.
 VENDORS_ON_FILE = [{
@@ -172,9 +181,14 @@ REJECT_ON_ITS_OWN = {
 }
 # Countries under comprehensive sanctions (simplified: a real deployment uses the current official lists).
 EMBARGOED_COUNTRIES = {"KP", "IR", "SY", "CU"}
-ESCALATE_TO_REVIEW = {"NAME_MISMATCH"}  # if the vendor repeats these, a person reads their explanation (for example a letter of authorisation)
 FIX_DEADLINE_DAYS = 7
-REMINDER_DAYS = 3  # a fix request that is still unanswered after this many days gets a reminder
+REMINDER_DAYS = 3
+# Repeat attempts: a vendor whose application is sent back files a NEW application. Applications are linked by a shared identifier, a near-identical
+# name or a re-used file. From the 4th linked attempt, or when an identity field changes that nobody asked to be changed, a person decides.
+ATTEMPTS_BEFORE_REVIEW = 3  # earlier linked attempts allowed before the next one goes to a reviewer
+ATTEMPT_WINDOW_DAYS = 30
+NAME_LINK_SCORE = 92  # company names this similar (0-100) count as the same applicant
+RATE_LIMIT_PER_HOUR = 30  # submissions per source (IP address) per hour  # a fix request that is still unanswered after this many days gets a reminder
 
 # What a vendor is told when a REVIEWER decides. Worked out from what the checks found, so the reviewer types nothing,
 # and nothing about other vendors or our internal records is revealed.
@@ -189,6 +203,9 @@ VENDOR_REASONS = {
     "NAME_NON_LATIN": "we could not compare the names you gave",
     "BANK_COUNTRY_DIFFERS": "your bank is in a different country than your company",
     "SANCTIONS_POSSIBLE": "we are unable to onboard this company",
+    "REPEATED_ATTEMPTS": "we could not verify the details you gave",
+    "IDENTITY_CHANGED_BETWEEN_ATTEMPTS": "we could not verify the details you gave",
+    "SERIOUS_EARLIER_REJECTION": "we are unable to onboard this company",
 }
 VENDOR_DOCUMENTS = {
     "DUPLICATE_BANK_ACCOUNT": "a bank letter or cancelled cheque showing your company name and account number",
@@ -201,4 +218,7 @@ VENDOR_DOCUMENTS = {
     "NAME_NON_LATIN": "your registration certificate and a bank letter with the names in Latin letters",
     "BANK_COUNTRY_DIFFERS": "a bank letter confirming the account and why it is held in another country",
     "SANCTIONS_POSSIBLE": "your company registration certificate and details of its owners",
+    "REPEATED_ATTEMPTS": "your company registration certificate and a bank letter showing your company name and account number",
+    "IDENTITY_CHANGED_BETWEEN_ATTEMPTS": "your company registration certificate and a bank letter showing your company name and account number",
+    "SERIOUS_EARLIER_REJECTION": "your company registration certificate and details of its owners",
 }

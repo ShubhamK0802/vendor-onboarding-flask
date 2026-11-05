@@ -1,12 +1,13 @@
 """Vendor onboarding checker, Flask edition. Run: python app.py  (or: gunicorn app:app --workers 1 --threads 4)."""
 import csv
+import hashlib
 import io
 import os
 import threading
 import time
 import uuid
 from datetime import datetime, timedelta
-from collections import Counter
+from collections import Counter, defaultdict
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))  # the database and sample_inputs are found next to this file
 
@@ -15,10 +16,12 @@ from markupsafe import Markup, escape  # noqa: E402
 
 import mailer  # noqa: E402
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, REMINDER_DAYS, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, FIX_DEADLINE_DAYS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, RATE_LIMIT_PER_HOUR, REMINDER_DAYS, RULE_VERSION, VENDOR_TO_FIX  # noqa: E402
+from checks import link_reasons  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
 app = Flask(__name__)
+app.config["RATE_LIMIT"] = RATE_LIMIT_PER_HOUR
 app.secret_key = os.environ.get("SECRET_KEY", "demo-only-key")  # only signs flash messages; ponytail: no CSRF/auth, this is a demo
 
 STAGE_PAUSE = 0.35  # seconds per check, so the live view is watchable
@@ -29,7 +32,8 @@ DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT r
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
 LEVELS = {1: "Vendor can fix", 2: "Needs review", 3: "Contradiction"}
 COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red", "Replaced": "gray"}
-SAMPLE_HINTS = {"04_edge_name_nearly_matches_bank_account.json": "submit twice, the 2nd as a resubmission", "06_edge_existing_vendor_changes_bank_account.json": "submit 01 first"}
+SAMPLE_HINTS = {"06_edge_existing_vendor_changes_bank_account.json": "submit 01 first"}
+SEEN = defaultdict(list)  # source -> times of its recent submissions (rate limit). ponytail: in memory, like PROGRESS
 PROGRESS = {}  # token -> live progress of one run. ponytail: in-memory, so one worker process; use the database if it must scale out
 
 
@@ -121,9 +125,8 @@ def sample_files():
 
 @app.get("/")
 def submit_page():
-    waiting = [r for r in store.load_runs() if r["waiting_on"] == "Vendor"]
     samples = [(n, n[:-5].replace("_", " ") + (f"  ({SAMPLE_HINTS[n]})" if n in SAMPLE_HINTS else "")) for n in sample_files()]
-    return render_template("submit.html", waiting=waiting, samples=samples, entity=ENTITY, country=COUNTRY, names=COUNTRY_NAMES)
+    return render_template("submit.html", samples=samples, entity=ENTITY, country=COUNTRY, names=COUNTRY_NAMES)
 
 
 def form_submission():
@@ -134,31 +137,46 @@ def form_submission():
             data = upload.read()
             files[slot] = (upload.filename, data)
             documents[slot] = {"filename": upload.filename, "file_type": upload.filename.rsplit(".", 1)[-1] if "." in upload.filename else "",
-                               "size_bytes": len(data), "declared_type": slot}
+                               "size_bytes": len(data), "declared_type": slot, "sha256": hashlib.sha256(data).hexdigest()}  # the hash spots a re-used file
         else:
             documents[slot] = None
     return {**{f: request.form.get(f, "") for f in FIELDS}, "documents": documents}, files
 
 
-def worker(token, submission, files, parent_id, previous):
+def worker(token, submission, files):
     progress = PROGRESS[token]
     try:
-        known, stages, started = store.known_vendors(store.load_runs()), [], time.perf_counter()
-        for stage in iter_stages(submission, known):
+        history = store.load_runs()
+        known, stages, started = store.known_vendors(history), [], time.perf_counter()
+        for stage in iter_stages(submission, known, history):
             stages.append(stage)
             progress["stages"].append({"name": stage["stage"].replace("_", " "), "status": stage["status"],
                                        "detail": stage.get("note") or (f"{len(stage['findings'])} found" if stage["findings"] else "")})
             time.sleep(STAGE_PAUSE)
         seconds = max(time.perf_counter() - started - STAGE_PAUSE * len(stages), 0)
-        progress["run_id"] = store.save_run(submission, build_decision(stages, previous), seconds, parent_id=parent_id, files=files)
+        # An application the vendor was waiting to fix is closed as replaced when the same applicant files a new one. This only tidies the history:
+        # nothing about the earlier application is carried into this one's decision.
+        replaced = next((r["run_id"] for r in reversed(history) if r["waiting_on"] == "Vendor" and link_reasons(submission, r)), None)
+        progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, parent_id=replaced, files=files)
         mailer.enqueue_verdict(progress["run_id"])  # the vendor is told the verdict; a background worker sends it
     except Exception as error:  # never leave the page spinning
         progress["error"] = f"Something went wrong: {error}"
     progress["done"] = True
 
 
+def too_many():
+    """True when this source (IP address) has sent too many submissions this hour: stops fast trial and error."""
+    source = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    now = time.time()
+    recent = [t for t in SEEN[source] if now - t < 3600]
+    SEEN[source] = recent + [now]
+    return len(recent) >= app.config["RATE_LIMIT"]
+
+
 @app.post("/api/submit")
 def api_submit():
+    if too_many():
+        return jsonify(error="Too many submissions from your network in the last hour. Please try again later."), 429
     mode, files = request.form.get("mode"), None
     if mode == "sample":
         name = request.form.get("sample")
@@ -175,33 +193,17 @@ def api_submit():
         (submission, files), error = form_submission(), None
     if error:
         return jsonify(error=error), 400
-    parent = request.form.get("parent") or None
-    earlier = next((r for r in store.load_runs() if r["run_id"] == parent and r["waiting_on"] == "Vendor"), None)
-    parent = earlier["run_id"] if earlier else None
-    previous = [(f["code"], f["message"]) for f in earlier["findings"]] if earlier else []  # what this vendor was already asked to fix
     token = uuid.uuid4().hex[:10]
     if len(PROGRESS) > 200:
         PROGRESS.pop(next(iter(PROGRESS)))
     PROGRESS[token] = {"stages": [], "done": False, "run_id": None, "error": None}
-    threading.Thread(target=worker, args=(token, submission, files, parent, previous), daemon=True).start()
+    threading.Thread(target=worker, args=(token, submission, files), daemon=True).start()
     return jsonify(token=token)
 
 
 @app.get("/api/progress/<token>")
 def api_progress(token):
     return jsonify(PROGRESS.get(token) or {"stages": [], "done": True, "run_id": None, "error": "Unknown submission"})
-
-
-@app.get("/api/prefill/<run_id>")
-def api_prefill(run_id):
-    """What a vendor corrects on resubmission. The bank account number is NOT sent back: they re-enter it."""
-    run = get_run(run_id)
-    if not run:
-        abort(404)
-    values = {f: run["payload"].get(f) or "" for f in FIELDS if f != "bank_account_number"}
-    values["country"] = values["country"] if values["country"] in COUNTRY else "Other"
-    values["entity_type"] = values["entity_type"] if values["entity_type"] in ENTITY else ENTITY[0]
-    return jsonify(values)
 
 
 @app.get("/run/<run_id>")
@@ -329,7 +331,7 @@ def messages_page():
 def export_csv():
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["submission id", "vendor id", "submitted at", "company", "country", "status now", "automatic verdict", "decided by", "reasons", "resubmission of"])
+    writer.writerow(["submission id", "vendor id", "submitted at", "company", "country", "status now", "automatic verdict", "decided by", "reasons", "replaces application"])
     for r in store.load_runs():
         writer.writerow([r["run_id"], r["vendor_id"], r["ts"], r["company"], r["country"], outcome(r), system_verdict(r), r["decided_by"], reasons(r), r["parent_id"] or ""])
     return Response(out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=vendor_onboarding_history.csv"})
@@ -344,6 +346,7 @@ def about():
 def reset():
     store.reset()
     PROGRESS.clear()
+    SEEN.clear()
     flash("Demo data cleared: no submissions, no decisions. The vendors already on file were restored.", "ok")
     return redirect(url_for("submit_page"))
 

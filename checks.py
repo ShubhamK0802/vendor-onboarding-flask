@@ -4,11 +4,12 @@ import re
 import unicodedata
 import urllib.request
 from collections import namedtuple
+from datetime import datetime, timedelta
 
 from rapidfuzz import fuzz
 
 from config import (
-    ALLOWED_FILE_TYPES, BANK_PROOF_DOCS, FIX, LEGAL_FORMS, NAME_REVIEW_THRESHOLD, PAN_HOLDER_CODES, RED,
+    ALLOWED_FILE_TYPES, ATTEMPT_WINDOW_DAYS, ATTEMPTS_BEFORE_REVIEW, BANK_PROOF_DOCS, EVIDENCE_FIELDS, FIX, NAME_LINK_SCORE, REJECT_ON_ITS_OWN, LEGAL_FORMS, NAME_REVIEW_THRESHOLD, PAN_HOLDER_CODES, RED,
     REQUIRED_BY_COUNTRY, REQUIRED_DOCS, REQUIRED_FIELDS, REVIEW, STRICT_SUFFIX_MATCH, SUPPORTED_COUNTRIES, EMBARGOED_COUNTRIES,
 )
 from normalize import clean_value, core_name, normalize_id, normalize_name
@@ -407,3 +408,60 @@ def check_duplicates(submission, existing_vendors):
         if (mobile and normalize_id(vendor.get("mobile")) == mobile) or (email and (clean_value(vendor.get("email")) or "").lower() == email):
             found["SHARED_CONTACT"] = make_finding("SHARED_CONTACT", REVIEW, "A phone number or email is shared with a different company; a reviewer will confirm")
     return make_result("duplicate_check", list(found.values()))
+
+
+# ---- 9. earlier attempts ------------------------------------------------------------------------
+# A vendor who is sent back files a new application. Nothing is inherited from the earlier one (no pre-filled form, no "fixed" shortcut);
+# the earlier attempts are only looked at to spot trial and error: the same applicant trying again and again, or changing who they are.
+
+IDENTITY_FIELDS = [("company_name", "company name"), ("tax_id", "tax ID"), ("pan", "PAN"), ("bank_account_number", "bank account")]
+
+
+def uploaded_files(submission):
+    return {d["sha256"] for d in (submission.get("documents") or {}).values() if isinstance(d, dict) and d.get("sha256")}
+
+
+def link_reasons(submission, earlier):
+    """Why an earlier application is probably the same applicant. Used to count attempts and to close an application the vendor has replaced."""
+    other, reasons = earlier["payload"], []
+    key = company_key(submission)
+    if key and key == company_key(other):
+        reasons.append("company ID")
+    for field, label in (("bank_account_number", "bank account"), ("mobile", "phone"), ("email", "email")):
+        if normalize_id(submission.get(field)) and normalize_id(submission.get(field)) == normalize_id(other.get(field)):
+            reasons.append(label)
+    mine, theirs = core_name(submission.get("company_name")), core_name(other.get("company_name"))
+    if mine and theirs and fuzz.ratio(mine, theirs) >= NAME_LINK_SCORE:
+        reasons.append("company name")
+    if uploaded_files(submission) & uploaded_files(other):
+        reasons.append("uploaded file")
+    return reasons
+
+
+def changed_identity(submission, earlier):
+    """Identity fields that differ from an earlier attempt where nobody asked for a change (a field the earlier attempt flagged may change)."""
+    asked = {field for code in earlier["codes"] for field in EVIDENCE_FIELDS.get(code, [])}
+    other, changed = earlier["payload"], []
+    for field, label in IDENTITY_FIELDS:
+        old, new = other.get(field), submission.get(field)
+        same_value = core_name(old) == core_name(new) if field == "company_name" else normalize_id(old) == normalize_id(new)
+        if clean_value(old) and field not in asked and not same_value:
+            changed.append(label)
+    return changed
+
+
+def check_attempts(submission, history, now=None):
+    """history: earlier runs (as store.load_runs gives them). Approved ones are not attempts: the duplicate check handles a company that is already in."""
+    now = now or datetime.now()
+    linked = [(run, why) for run in history if run["final"] != "Approved" and now - datetime.fromisoformat(run["ts"]) <= timedelta(days=ATTEMPT_WINDOW_DAYS)
+              and (why := link_reasons(submission, run))]
+    findings = []
+    if len(linked) >= ATTEMPTS_BEFORE_REVIEW:
+        how = ", ".join(sorted({reason for _, why in linked for reason in why}))
+        findings.append(make_finding("REPEATED_ATTEMPTS", REVIEW, f"Attempt {len(linked) + 1} by this applicant in {ATTEMPT_WINDOW_DAYS} days (linked by {how}); a reviewer will read the earlier attempts"))
+    changed = sorted({label for run, _ in linked for label in changed_identity(submission, run)})
+    if changed:
+        findings.append(make_finding("IDENTITY_CHANGED_BETWEEN_ATTEMPTS", REVIEW, f"Changed since an earlier attempt, without being asked: {', '.join(changed)}; a reviewer will confirm"))
+    if any(code in REJECT_ON_ITS_OWN and code != "DUPLICATE_APPLICATION" for run, _ in linked for code in run["codes"]):
+        findings.append(make_finding("SERIOUS_EARLIER_REJECTION", REVIEW, "An earlier attempt by this applicant was stopped for a serious reason; a reviewer will decide"))
+    return make_result("repeat_attempts", findings, skipped_reason=None if linked else "No earlier attempt found for this applicant")

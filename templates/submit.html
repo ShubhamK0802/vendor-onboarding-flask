@@ -2,14 +2,6 @@
 {% block body %}
 <div class="grid">
   <section class="card">
-    <label>Is this a corrected resubmission of an earlier submission?
-      <select id="parent">
-        <option value="">No, a new vendor</option>
-        {% for r in waiting %}<option value="{{ r.run_id }}">{{ r.company }} ({{ r.final_sub }}, {{ r.run_id }})</option>{% endfor %}
-      </select>
-    </label>
-    <p class="muted" id="parent-note" hidden>The form was filled in from the earlier submission. For safety the bank account number is not shown: please enter it again.</p>
-
     <div class="tabs">
       <button type="button" class="tab-btn on" data-tab="tab-form">Vendor form</button>
       <button type="button" class="tab-btn" data-tab="tab-sample">JSON file</button>

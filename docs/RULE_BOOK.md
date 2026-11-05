@@ -1,4 +1,4 @@
-# Rule book: vendor onboarding (rules v5.0)
+# Rule book: vendor onboarding (rules v6.0)
 
 Every decision is made by fixed rules in code (`checks.py`, `decide.py`, `config.py`). No AI decides. The same submission always gets the same answer, and every finding names the rule that raised it.
 
@@ -7,10 +7,10 @@ Every decision is made by fixed rules in code (`checks.py`, `decide.py`, `config
 | Status | Meaning | Who acts next |
 |---|---|---|
 | **Approved** | No findings. A vendor ID is issued. | Nobody |
-| **Pending: Vendor to fix** | Only things the vendor can correct (typo, missing field or document). The vendor gets a numbered list. | Vendor, within 7 days |
+| **Pending: Waiting for vendor** | Only things the vendor can correct (typo, missing field or document). The vendor gets a numbered list. | Vendor, within 7 days |
 | **Pending: Needs review** | A case that needs human judgment. The vendor is told it is under review. | Reviewer |
 | **Rejected** | Cannot be approved as submitted; a correction or a review would not change that. The vendor is told the reason. | Nobody (vendor may start a new application) |
-| *Replaced* | Final state of an older run when the vendor resubmits; the new run links to it. | Nobody |
+| *Replaced* | Final state of a waiting application when the same applicant files a new one. Nothing is carried over. | Nobody |
 
 ## 2. Finding levels
 
@@ -23,11 +23,11 @@ Every decision is made by fixed rules in code (`checks.py`, `decide.py`, `config
 ## 3. The decision rule (in order)
 
 1. No findings → **Approved**.
-2. Any "rejects on its own" finding (section 6), **or** two or more RED findings, **or** a FIX/RED finding that was already reported on the previous submission and is still there → **Rejected**.
-3. Any REVIEW finding, **or** a repeated `NAME_MISMATCH` (a person reads the vendor's explanation) → **Pending: Needs review**.
-4. Otherwise → **Pending: Vendor to fix**.
+2. Any "rejects on its own" finding (section 6), **or** two or more RED findings → **Rejected**.
+3. Any REVIEW finding (including a repeat-attempt finding, section 5.9) → **Pending: Needs review**.
+4. Otherwise → **Pending: Waiting for vendor**.
 
-## 4. The eight stages (run in this order)
+## 4. The nine stages (run in this order)
 
 | # | Stage | What it checks |
 |---|---|---|
@@ -39,6 +39,7 @@ Every decision is made by fixed rules in code (`checks.py`, `decide.py`, `config
 | 6 | Name match | Company name against bank account holder name |
 | 7 | Verification | Registry, sanctions, embargo, placeholder IDs |
 | 8 | Duplicate check | Against vendors already onboarded |
+| 9 | Repeat attempts | Earlier applications by the same applicant |
 
 ## 5. Rules by stage
 
@@ -115,6 +116,17 @@ Registry and sanctions are **demo data** (`registry.json`, `sanctions.json`, fic
 | `SHARED_CONTACT` | REVIEW | Phone or email belongs to another company |
 | `LOOKALIKE_OF_EXISTING_VENDOR` | REVIEW → rejects | Name differs from an existing vendor only by look-alike characters |
 
+### 5.9 Repeat attempts (against earlier applications, not vendors on file)
+An earlier application counts as the same applicant when it shares a company ID, bank account, phone or email, has a company name 92% or more similar, or has a byte-identical uploaded file, and was made in the last 30 days. Approved ones are not attempts (the duplicate check handles them).
+
+| Finding | Level | Trigger |
+|---|---|---|
+| `REPEATED_ATTEMPTS` | REVIEW | 3 or more earlier linked attempts: the 4th goes to a reviewer, even if it is perfect |
+| `IDENTITY_CHANGED_BETWEEN_ATTEMPTS` | REVIEW | Bank account, tax ID, PAN or company name differs from an earlier attempt and nobody asked for that change (fields the earlier attempt flagged may change) |
+| `SERIOUS_EARLIER_REJECTION` | REVIEW | An earlier linked attempt was stopped for a serious reason (sanctions, look-alike, placeholder ID, embargo, cancelled registration) |
+
+The vendor is only told "under review", never why. A reviewer sees the finding text. **Rate limit:** more than 30 submissions per hour from one network address are refused. **Ceiling:** an applicant who changes every identifier and has real identities behind each is not linked; the fix is real registry and bank verification (a production upgrade).
+
 ## 6. Rejected on its own (no "please fix", straight to Rejected)
 
 | Code | What the vendor is told |
@@ -129,14 +141,14 @@ Registry and sanctions are **demo data** (`registry.json`, `sanctions.json`, fic
 | `LOOKALIKE_NAME` | Two names look identical but use look-alike characters |
 | `LOOKALIKE_OF_EXISTING_VENDOR` | Your company name could not be accepted |
 
-**Look-alike folding:** `0/O→o`, `1/I→l`, `5→s`, `8→b`, `2→z`, `6→g`. Honest typos are rarely made only of look-alike swaps, so these are rejected rather than sent back. Other rejection routes: two RED findings at once; the same finding repeated after a fix request; no reply within 7 days; a reviewer's decision.
+**Look-alike folding:** `0/O→o`, `1/I→l`, `5→s`, `8→b`, `2→z`, `6→g`. Honest typos are rarely made only of look-alike swaps, so these are rejected rather than sent back. Other rejection routes: two RED findings at once; no reply within 7 days; a reviewer's decision.
 
 The vendor is never told what matched a sanctions list, which other vendor was involved, or anything from our internal records.
 
 ## 7. Time rules
 - Fix requests close after **7 days** with no reply (`Rejected`).
 - A reminder is sent after **3 days**.
-- A resubmission links to the earlier run; the older run becomes *Replaced*.
+- A vendor who is sent back files a **new application**. It is checked from scratch (no pre-fill, nothing inherited); the earlier waiting application becomes *Replaced*.
 
 ## 8. What the vendor is told
 
@@ -144,7 +156,7 @@ The vendor is never told what matched a sanctions list, which other vendor was i
 |---|---|
 | Approved | "Your application is approved." |
 | Needs review | "Your application is under review. We will reach back to you if anything is needed." |
-| Vendor to fix | "Please fix:" then a numbered list |
+| Waiting for vendor | "Please fix:" then a numbered list |
 | Rejected | "Your application is rejected because …" |
 
 A reviewer's decision produces the same wording automatically, built from what the checks found (`VENDOR_REASONS`, `VENDOR_DOCUMENTS`); the reviewer types nothing. All messages for one application go in the same mail thread ("Re: …").

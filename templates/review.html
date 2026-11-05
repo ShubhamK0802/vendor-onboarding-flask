@@ -64,7 +64,7 @@
 {% endif %}
 
 <details class="card"><summary>Waiting on the vendor ({{ waiting|length }})</summary>
-  <p class="muted">The vendor fixes these and resubmits from the Onboard vendor page; the earlier submission is then marked replaced. Where a reviewer asked for more information, you can still open it and decide if the vendor never answers.</p>
+  <p class="muted">The vendor fixes these and sends a new application from the Onboard vendor page; the earlier one is then marked replaced. Where a reviewer asked for more information, you can still open it and decide if the vendor never answers.</p>
   {% if waiting %}<table><thead><tr><th>Submission ID</th><th>Submitted at</th><th>Company</th><th>Status</th><th>What to fix</th></tr></thead>
     <tbody>{% for r in waiting %}<tr><td>{% if r in info_waiting %}<a href="{{ url_for('review_page', run=r.run_id, **args) }}">{{ r.run_id }}</a>{% else %}{{ r.run_id }}{% endif %}</td><td>{{ r.ts.replace('T', ' ') }}</td><td>{{ r.company }}</td><td>{{ r.final_sub }}</td><td>{{ reasons(r) }}</td></tr>{% endfor %}</tbody></table>
   {% else %}<p class="muted">None.</p>{% endif %}

@@ -6,13 +6,13 @@ Diagrams use Mermaid (they render on GitHub, in VS Code with a Mermaid extension
 
 ```mermaid
 flowchart TD
-    A[Vendor submits form or JSON] --> B[Pipeline: 8 stages]
+    A[Vendor submits form or JSON] --> B[Pipeline: 9 stages]
     B --> C{Decision rule}
     C -->|no findings| D[Approved + vendor ID]
-    C -->|only fixable findings| E[Pending: Vendor to fix]
+    C -->|only fixable findings| E[Pending: Waiting for vendor]
     C -->|needs judgment| F[Pending: Needs review]
-    C -->|rejects on its own / 2 red flags / repeated| G[Rejected]
-    E -->|vendor resubmits within 7 days| B
+    C -->|rejects on its own / 2 red flags| G[Rejected]
+    E -->|vendor files a new application within 7 days| A
     E -->|no reply in 7 days| G
     E -->|3 days, no reply| R[Reminder mail]
     F --> H[Reviewer takes the case]
@@ -31,31 +31,32 @@ flowchart TD
 flowchart LR
     S1[1 Completeness] --> S2[2 Country routing] --> S3[3 Format checks] --> S4[4 Documents]
     S4 --> S5[5 Identity checks] --> S6[6 Name match] --> S7[7 Verification] --> S8[8 Duplicate check]
-    S8 --> D[Decision]
+    S8 --> S9[9 Repeat attempts] --> D[Decision]
 ```
 
 Each stage shows live on the run page as it completes. A stage that cannot run (for example country not supported) is shown as skipped, with the reason.
 
-## 3. Resubmission
+## 3. A new application after a fix request
 
 ```mermaid
 sequenceDiagram
     participant V as Vendor
     participant S as System
     participant R as Reviewer
-    V->>S: Submit (run A)
-    S-->>V: Pending: please fix 1..n (mail)
-    V->>S: Resubmit with parent = A
-    S->>S: Run pipeline, compare with A's findings
-    alt fixed
-        S-->>V: Approved or under review
-    else same finding still there
-        S-->>V: Rejected: not fixed after resubmission
-    else NAME_MISMATCH repeated
-        S->>R: Needs review (read the vendor's explanation)
+    V->>S: Application A
+    S-->>V: Waiting for vendor: please fix 1..n (mail)
+    V->>S: New application B (nothing pre-filled, nothing carried over)
+    S->>S: Check B from scratch, then count linked earlier attempts
+    alt clean and fewer than 4 attempts, no unasked identity change
+        S-->>V: Approved
+    else 4th attempt or identity changed or earlier serious rejection
+        S->>R: Needs review (attempts shown)
+        S-->>V: Under review
     end
     S->>S: Mark A as Replaced
 ```
+
+Attempts are linked by company ID, bank account, phone, email, a near-identical company name, or the same uploaded file, within 30 days. A change to a field the earlier attempt flagged is expected and not an identity change.
 
 ## 4. Reviewer desk
 
@@ -66,7 +67,7 @@ flowchart TD
     V --> X{Decide}
     X -->|Approve| AP[Approved + vendor ID]
     X -->|Reject| RJ[Rejected]
-    X -->|Request info| RI[Pending: Vendor to fix]
+    X -->|Request info| RI[Pending: Waiting for vendor]
     V -->|Give back| Q
 ```
 

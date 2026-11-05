@@ -129,7 +129,7 @@ def final_state(run):
     """What a run is NOW, after reviewer decisions, vendor resubmissions and the time limit (the rules' own verdict stays in status/sub_status)."""
     d = run["decision_by"]
     if run["superseded_by"]:
-        return {"final": "Replaced", "final_sub": f"by resubmission {run['superseded_by']}", "waiting_on": "-"}
+        return {"final": "Replaced", "final_sub": f"by a newer application {run['superseded_by']}", "waiting_on": "-"}
     if d and d["decision"] in ("Approved", "Rejected"):
         return {"final": d["decision"], "final_sub": f"{d['decision']} by reviewer", "waiting_on": "-"}
     if d:

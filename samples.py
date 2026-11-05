@@ -132,10 +132,11 @@ CASES = [
     ("23_reject_cancelled_registration", indian("Orbit Exports Private Limited", "ORBCO5612S", "81000123456713"), SEED, "Rejected", None, {"status": "cancelled"}),
     ("24_reject_placeholder_tax_id", american("Summit Tools LLC", "12-3456789", "6600123987", mobile="4155550177"), SEED, "Rejected", None, None),
     ("25_fix_incomplete_form_with_wrong_document", incomplete_form(), SEED, "Pending", "Vendor to fix", None),
+    ("26_reject_lookalike_name", indian("Globex Foods Private Limited", "GLOCF4567G", "82000123456714", holder="Gl0bex Foods Private Limited"), SEED, "Rejected", None, None),
 ]
 
 
-# The samples in the app: one clean vendor and five edge cases, each a case named in the Zamp brief (or its payment-fraud risk).
+# The samples in the app: one clean vendor and six edge cases: five named in the Zamp brief (or its payment-fraud risk) and one look-alike trick.
 # (sample file, the case in CASES it is written from)
 SAMPLES = [
     ("01_approved_india_clean", "01_approved_india_clean"),                                                 # the happy path
@@ -144,6 +145,7 @@ SAMPLES = [
     ("04_edge_name_nearly_matches_bank_account", "09_fix_near_miss_name"),                                  # "the name doesn't match the bank account": sent back, rejected if it repeats
     ("05_edge_identity_fields_contradict", "19_reject_two_contradictions"),                                 # "subtle inconsistencies when you cross-reference the fields": rejected
     ("06_edge_existing_vendor_changes_bank_account", "11_review_existing_vendor_changes_bank_account"),     # "payment fraud": a reviewer must verify it; submit 01 first
+    ("07_edge_lookalike_characters_in_name", "26_reject_lookalike_name"),                                   # "Gl0bex" against "Globex": a zero for an o: rejected outright
 ]
 
 

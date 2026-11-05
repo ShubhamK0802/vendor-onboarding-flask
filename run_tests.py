@@ -202,11 +202,11 @@ os.environ.pop("VIES_LIVE")
 store.reset()
 check(store.load_runs() == [] and store.load_decisions() == [] and len(store.known_vendors([])) == 1, "reset: no runs or decisions, vendors on file restored")
 
-# ---- the app offers exactly six samples: one clean vendor and five edge cases
+# ---- the app offers exactly seven samples: one clean vendor and six edge cases
 by_case = {case[0]: case for case in CASES}
 shown = sorted(f[:-5] for f in os.listdir("sample_inputs"))
-check(shown == sorted(file for file, _ in SAMPLES) and len(shown) == 6, "samples: the app offers exactly six (one clean vendor and five edge cases)", f"-> {shown}")
-check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Pending", "Vendor to fix"), ("Pending", "Vendor to fix"), ("Pending", "Vendor to fix"), ("Rejected", None), ("Pending", "Needs review")],
+check(shown == sorted(file for file, _ in SAMPLES) and len(shown) == 7, "samples: the app offers exactly seven (one clean vendor and six edge cases)", f"-> {shown}")
+check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Pending", "Vendor to fix"), ("Pending", "Vendor to fix"), ("Pending", "Vendor to fix"), ("Rejected", None), ("Pending", "Needs review"), ("Rejected", None)],
       "samples: they cover every outcome (approved, vendor to fix, rejected, needs review)")
 for file, case in SAMPLES:
     with open(f"sample_inputs/{file}.json", encoding="utf-8") as handle:

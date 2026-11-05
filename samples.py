@@ -101,6 +101,12 @@ def incomplete_form():
     return d
 
 
+def demo_form_vendor():
+    """The vendor in demo_form_submission/: a clean Indian company, approved when its form is filled in and its four PDFs are uploaded."""
+    return indian("Horizon Textiles Private Limited", "HORCH7421J", "83000123456715", mobile="9822012345", email="accounts@horizontextiles.example",
+                  address="Plot 21, Industrial Estate, Pune, Maharashtra 411019", ifsc="ICIC0001234")
+
+
 # (file name, submission, vendors already known to the system, expected status, expected reason, demo-registry override)
 CASES = [
     # ---------------- Approved: nothing wrong
@@ -132,6 +138,7 @@ CASES = [
     ("23_reject_cancelled_registration", indian("Orbit Exports Private Limited", "ORBCO5612S", "81000123456713"), SEED, "Rejected", None, {"status": "cancelled"}),
     ("24_reject_placeholder_tax_id", american("Summit Tools LLC", "12-3456789", "6600123987", mobile="4155550177"), SEED, "Rejected", None, None),
     ("25_fix_incomplete_form_with_wrong_document", incomplete_form(), SEED, "Pending", "Vendor to fix", None),
+    ("27_approved_form_demo_vendor", demo_form_vendor(), SEED, "Approved", None, None),
     ("26_reject_lookalike_name", indian("Globex Foods Private Limited", "GLOCF4567G", "82000123456714", holder="Gl0bex Foods Private Limited"), SEED, "Rejected", None, None),
 ]
 

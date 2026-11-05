@@ -14,7 +14,7 @@ os.environ["MAIL_WORKER"] = "0"  # the background sender is driven by hand in th
 from decide import parse_submission, run_pipeline
 from datetime import datetime, timedelta
 
-from samples import APEX, CASES, SAMPLES, INDIA, american, fresh, indian, make_iban, short_tax_id
+from samples import APEX, CASES, SAMPLES, SEED, INDIA, american, fresh, indian, make_iban, short_tax_id
 
 store.DB_PATH = os.path.join(tempfile.mkdtemp(), "test.db")
 failed = []
@@ -302,6 +302,21 @@ done_page = client.post(f"/review/{clash}", data={"reviewer": "Priya", "decision
 check(b"Rejected by Priya" in done_page and next(r for r in store.load_runs() if r["run_id"] == clash)["final"] == "Rejected", "reviewer desk: a run waiting for the vendor's reply can still be closed by a reviewer")
 client.post("/reset")
 
+
+# ---- the form-submission kit: a clean vendor's values and four sample PDFs, used exactly as a person would use the form
+kit_dir = "demo_form_submission"
+with open(f"{kit_dir}/vendor_submission.json", encoding="utf-8") as handle:
+    kit = json.load(handle)
+pdf_files = {slot: f"{kit_dir}/{doc['filename']}" for slot, doc in kit["documents"].items()}
+pdf_bytes = {slot: open(path, "rb").read() for slot, path in pdf_files.items()}
+check(len(pdf_files) == 4 and all(data.startswith(b"%PDF-") and b"SAMPLE DOCUMENT FOR DEMONSTRATION ONLY" in data for data in pdf_bytes.values()), "kit: four sample PDFs exist, are real PDFs, and are marked as fictional samples")
+check(kit["tax_id"].encode() in pdf_bytes["tax_document"] and kit["company_name"].encode() in pdf_bytes["registration"] and kit["bank_account_number"].encode() in pdf_bytes["voided_cheque"]
+      and kit["bank_code"].encode() in pdf_bytes["passbook"], "kit: the documents show the same GSTIN, company name, account number and IFSC as the form values")
+check(run_pipeline(kit, SEED)["status"] == "Approved", "kit: the JSON file is approved")
+form = {f: kit.get(f) or "" for f in app.FIELDS}
+form.update(mode="form", **{slot: (io.BytesIO(pdf_bytes[slot]), os.path.basename(path)) for slot, path in pdf_files.items()})
+filled = run_web(**form)["run_id"]
+check(next(r for r in store.load_runs() if r["run_id"] == filled)["final"] == "Approved" and {d["slot"] for d in store.get_docs(filled)} == set(pdf_files), "kit: typed into the form with the four PDFs uploaded, it is approved and the PDFs are kept for a reviewer")
 
 # ---- the outbox and the background sender (driven by hand here; in the app a worker thread does the same every few seconds)
 import mailer  # noqa: E402

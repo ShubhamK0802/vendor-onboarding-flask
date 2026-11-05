@@ -1,0 +1,40 @@
+{
+  "company_name": "Horizon Textiles Private Limited",
+  "entity_type": "company",
+  "country": "IN",
+  "email": "accounts@horizontextiles.example",
+  "mobile": "9822012345",
+  "address": "Plot 21, Industrial Estate, Pune, Maharashtra 411019",
+  "tax_id": "27HORCH7421J1Z4",
+  "pan": "HORCH7421J",
+  "bank_account_name": "Horizon Textiles Private Limited",
+  "bank_account_number": "83000123456715",
+  "bank_code": "ICIC0001234",
+  "website": "https://www.horizon.example",
+  "documents": {
+    "tax_document": {
+      "filename": "1_tax_document_gst_certificate.pdf",
+      "file_type": "pdf",
+      "size_bytes": 2321,
+      "declared_type": "tax_document"
+    },
+    "registration": {
+      "filename": "2_registration_certificate.pdf",
+      "file_type": "pdf",
+      "size_bytes": 1940,
+      "declared_type": "registration"
+    },
+    "voided_cheque": {
+      "filename": "3_voided_cheque.pdf",
+      "file_type": "pdf",
+      "size_bytes": 1779,
+      "declared_type": "voided_cheque"
+    },
+    "passbook": {
+      "filename": "4_passbook_first_page.pdf",
+      "file_type": "pdf",
+      "size_bytes": 2411,
+      "declared_type": "passbook"
+    }
+  }
+}

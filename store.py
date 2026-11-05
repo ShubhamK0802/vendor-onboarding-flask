@@ -1,15 +1,15 @@
 """All persistence in one SQLite file (stdlib). Raw submissions stay in the DB; everything shown in the UI is masked."""
-import os
 import uuid
 import json
 import sqlite3
+import threading
 from contextlib import closing
 from datetime import datetime
 
 from checks import company_key
 from config import NEEDS_REVIEW, VENDORS_ON_FILE
 
-DB_PATH = os.environ.get("DB_PATH", "onboarding.db")  # on the free host a fresh file per start (see render.yaml): a file left locked by a killed process cannot block the next start
+DB_PATH = "onboarding.db"
 SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "entity_type", "country", "bank_code", "mobile", "email"]
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, country TEXT, status TEXT, sub_status TEXT,
@@ -30,15 +30,46 @@ def new_vendor_id(country):
     return "V" + (country if isinstance(country, str) and len(country) == 2 and country.isalpha() and country.isupper() else "XX") + uuid.uuid4().hex[:6].upper()
 
 
+_lock, _shared = threading.RLock(), {"path": None, "conn": None}
+
+
+class Handle:
+    """What connect() returns: the one shared connection, held by the calling thread until close(). The app is a single process, so all
+    database access is serialised here and threads never fight over SQLite's file lock (which failed with 'database is locked' on the host)."""
+
+    def __getattr__(self, name):
+        return getattr(_shared["conn"], name)
+
+    def __enter__(self):
+        _shared["conn"].__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        return _shared["conn"].__exit__(*exc)
+
+    def close(self):
+        _lock.release()
+
+
 def connect():
-    conn = sqlite3.connect(DB_PATH, timeout=30)  # wait for another thread's write instead of failing
-    conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
-    if not conn.execute("SELECT 1 FROM vendors").fetchone():  # an empty master is re-filled with the vendors that were already on file
-        conn.executemany("INSERT INTO vendors VALUES (:company_key, :company_name, :bank_account_number, :mobile, :email, :address)", VENDORS_ON_FILE)
-        conn.executemany("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", [(v["company_key"], new_vendor_id(v["country"])) for v in VENDORS_ON_FILE])
-        conn.commit()
-    return conn
+    _lock.acquire()
+    try:
+        if _shared["path"] != DB_PATH:
+            if _shared["conn"]:
+                _shared["conn"].close()
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            conn.executescript(SCHEMA)
+            _shared.update(path=DB_PATH, conn=conn)
+        conn = _shared["conn"]
+        if not conn.execute("SELECT 1 FROM vendors").fetchone():  # an empty master is re-filled with the vendors that were already on file
+            conn.executemany("INSERT INTO vendors VALUES (:company_key, :company_name, :bank_account_number, :mobile, :email, :address)", VENDORS_ON_FILE)
+            conn.executemany("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", [(v["company_key"], new_vendor_id(v["country"])) for v in VENDORS_ON_FILE])
+            conn.commit()
+        return Handle()
+    except BaseException:
+        _lock.release()
+        raise
 
 
 def query(sql, args=()):

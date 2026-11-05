@@ -160,7 +160,10 @@ def worker(token, submission, files):
         # An application the vendor was waiting to fix is closed as replaced when the same applicant files a new one. This only tidies the history:
         # nothing about the earlier application is carried into this one's decision.
         replaced = next((r["run_id"] for r in reversed(history) if r["waiting_on"] == "Vendor" and link_reasons(submission, r)), None)
-        progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, parent_id=replaced, files=files)
+        # The same applicant keeps one vendor ID across attempts, even when the tax ID was the thing that was wrong or the earlier attempt was rejected.
+        # Only strong links count here (a shared name or file is a hint for the reviewer, not proof of identity).
+        same_as = next((r["run_id"] for r in reversed(history) if {"company ID", "bank account", "phone", "email"} & set(link_reasons(submission, r))), None)
+        progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, parent_id=replaced, files=files, same_as=same_as)
         mailer.enqueue_verdict(progress["run_id"])  # the vendor is told the verdict; a background worker sends it
     except Exception as error:  # never leave the page spinning
         progress["error"] = f"Something went wrong: {error}"

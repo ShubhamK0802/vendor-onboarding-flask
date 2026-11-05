@@ -433,6 +433,7 @@ for edge, fixed, expected in [("02_edge_incomplete_form_wrong_document", "02b_co
     fixed_run = run_web(mode="sample", sample=fixed + ".json")["run_id"]
     check(run(fixed_run)["final"] == expected, f"corrected sample: {fixed} after {edge[:2]} gives {expected}", run(fixed_run)["final"])
     check(run(fixed_run)["final"] == "Pending" or run(first_run)["final"] != "Approved", f"corrected sample: {edge[:2]} itself was not approved")
+    check(run(first_run)["vendor_id"] == run(fixed_run)["vendor_id"], f"vendor ID: {edge[:2]} and its fix are the same applicant, so the same vendor ID")
 client.post("/reset")
 alone = run_web(mode="sample", sample="07b_corrected_lookalike_name_spelled_right.json")["run_id"]
 check(run(alone)["final"] == "Approved", "corrected sample: 07b on its own is approved")

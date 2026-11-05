@@ -58,7 +58,7 @@ def make_snapshot(submission):
     return {**{f: submission.get(f) for f in SNAPSHOT_FIELDS}, "bank_account_number": mask_account(submission.get("bank_account_number"))}
 
 
-def save_run(submission, decision, seconds, parent_id=None, files=None):
+def save_run(submission, decision, seconds, parent_id=None, files=None, same_as=None):
     """files: {slot: (filename, bytes)} - the uploaded documents, kept so a reviewer can open them."""
     run_id, key = uuid.uuid4().hex[:8], company_key(submission)  # random, so nobody can guess another submission's ID
     with closing(connect()) as conn, conn:
@@ -66,7 +66,7 @@ def save_run(submission, decision, seconds, parent_id=None, files=None):
             run_id, now(), submission.get("company_name"), submission.get("country"), decision["status"], decision["sub_status"],
             decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
         conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
-        vendor = vendor_for(conn, submission, key, parent_id)
+        vendor = vendor_for(conn, submission, key, parent_id or same_as)  # same_as: an earlier run by the same applicant (any status)
         conn.execute("INSERT INTO run_vendor VALUES (?,?)", (run_id, vendor))
         if key:
             conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (key, vendor))

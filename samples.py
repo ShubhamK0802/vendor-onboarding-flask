@@ -139,6 +139,12 @@ CASES = [
     ("24_reject_placeholder_tax_id", american("Summit Tools LLC", "12-3456789", "6600123987", mobile="4155550177"), SEED, "Rejected", None, None),
     ("25_fix_incomplete_form_with_wrong_document", incomplete_form(), SEED, "Pending", "Waiting for vendor", None),
     ("27_approved_form_demo_vendor", demo_form_vendor(), SEED, "Approved", None, None),
+    # ---------------- the corrected versions of the edge-case samples (what the vendor sends after being told what is wrong)
+    ("28_corrected_incomplete_form", indian("Delta Pumps Private Limited", "DELCP3456L", "72000123456702"), SEED, "Approved", None, None),
+    ("29_corrected_tax_id_for_country", american("Redwood Supply LLC", "61-4827395", "4400555111", mobile="3105550188"), SEED, "Approved", None, None),
+    ("30_corrected_bank_holder_name", indian("Lumina Global Private Limited", "LUMCG5678N", "74000123456704"), SEED, "Approved", None, None),
+    ("31_corrected_identity_fields", indian("Cobalt Tools Private Limited", "COBCT9012S", "79000123456711"), SEED, "Approved", None, None),
+    ("32_corrected_lookalike_name", indian("Globex Foods Private Limited", "GLOCF4567G", "82000123456714"), SEED, "Approved", None, None),
     ("26_reject_lookalike_name", indian("Globex Foods Private Limited", "GLOCF4567G", "82000123456714", holder="Gl0bex Foods Private Limited"), SEED, "Rejected", None, None),
 ]
 
@@ -156,12 +162,24 @@ SAMPLES = [
 ]
 
 
+# The corrected version of each edge case a vendor can fix, so you can see that sending the right data works.
+# 06 has none: an existing vendor changing its bank account can only be settled by a reviewer, whatever the vendor sends.
+# 07 is the exception to "approved": alone it is approved, but after 07 was rejected for look-alike characters the new application goes to a reviewer.
+CORRECTED = [
+    ("02b_corrected_incomplete_form_completed", "28_corrected_incomplete_form"),
+    ("03b_corrected_tax_id_for_country", "29_corrected_tax_id_for_country"),
+    ("04b_corrected_bank_holder_name_matches", "30_corrected_bank_holder_name"),
+    ("05b_corrected_identity_fields_consistent", "31_corrected_identity_fields"),
+    ("07b_corrected_lookalike_name_spelled_right", "32_corrected_lookalike_name"),
+]
+
+
 def write_samples():
     os.makedirs("sample_inputs", exist_ok=True)
     for name in os.listdir("sample_inputs"):
         os.remove(os.path.join("sample_inputs", name))
     by_name = {case[0]: case for case in CASES}
-    for file_name, case_name in SAMPLES:
+    for file_name, case_name in SAMPLES + CORRECTED:
         with open(f"sample_inputs/{file_name}.json", "w", encoding="utf-8") as handle:
             json.dump(by_name[case_name][1], handle, indent=2)
     registry = {"_note": "SIMULATED tax registry for the demo. A real deployment calls the tax authorities (GST portal, IRS TIN matching, EU VIES).", "IN": {}, "US": {}, "DE": {}}
@@ -177,4 +195,4 @@ def write_samples():
 
 if __name__ == "__main__":
     write_samples()
-    print(f"{len(SAMPLES)} samples, registry.json and sanctions.json written")
+    print(f"{len(SAMPLES)} samples + {len(CORRECTED)} corrected versions, registry.json and sanctions.json written")

@@ -12,7 +12,7 @@ Hosting: `gunicorn app:app --workers 1 --threads 4` (see `Procfile`). Keep one w
 
 **What changed from version 2 (Streamlit):** Flask + plain HTML/CSS/JS; no "waiting on" label or speed slider; history starts empty
 (only the vendors already on file exist, for the duplicate check); a vendor that is already onboarded is never auto-approved when it
-submits again; seven samples: one clean vendor and six edge cases, five taken from the Zamp brief (incomplete form with a wrong document, tax ID wrong for the country, name nearly matches the bank account, identity fields contradict, an existing vendor changes its bank account) plus a look-alike name (Gl0bex for Globex). Submit 01 before 06. The Messages page lists what a mail service would send to vendors (simulated).
+submits again; seven samples (one clean vendor and six edge cases) plus a corrected version of each edge case a vendor can fix (02b, 03b, 04b, 05b, 07b: submit the edge case, then its fix, and the fix is approved; 06 has none because only a reviewer can settle it; 07b goes to a reviewer if 07 was submitted first), five taken from the Zamp brief (incomplete form with a wrong document, tax ID wrong for the country, name nearly matches the bank account, identity fields contradict, an existing vendor changes its bank account) plus a look-alike name (Gl0bex for Globex). Submit 01 before 06. The Messages page lists what a mail service would send to vendors (simulated).
 
 **Files:** `checks.py` rules · `decide.py` verdict · `store.py` SQLite · `app.py` routes · `templates/` pages · `static/` CSS and live-view JS.
 

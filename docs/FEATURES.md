@@ -5,7 +5,7 @@
 - Runs **9 rule-based stages**; the run page shows each stage live as it completes.
 - Four clear outcomes: Approved, Pending (Waiting for vendor / Needs review), Rejected.
 - **Live run view** and **dashboard** with history and CSV export.
-- **Edge cases shown by samples** (one clean + six): incomplete form with wrong document; tax ID wrong for the country; name nearly matches bank holder; identity fields contradict; existing vendor changes bank account; look-alike characters in a name.
+- **Edge cases shown by samples** (one clean + six): incomplete form with wrong document; tax ID wrong for the country; name nearly matches bank holder; identity fields contradict; existing vendor changes bank account; look-alike characters in a name. Each fixable one has a **corrected sample** to prove that sending the right data is approved.
 
 ## Fraud and quality defences
 - Check digits for GSTIN, PAN, IFSC, US routing, German VAT, IBAN.

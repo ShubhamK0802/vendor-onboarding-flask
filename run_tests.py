@@ -14,7 +14,7 @@ os.environ["MAIL_WORKER"] = "0"  # the background sender is driven by hand in th
 from decide import parse_submission, run_pipeline
 from datetime import datetime, timedelta
 
-from samples import APEX, CASES, SAMPLES, SEED, INDIA, american, fresh, indian, make_iban, short_tax_id
+from samples import APEX, CASES, CORRECTED, SAMPLES, SEED, INDIA, american, fresh, indian, make_iban, short_tax_id
 
 store.DB_PATH = os.path.join(tempfile.mkdtemp(), "test.db")
 failed = []
@@ -197,13 +197,13 @@ os.environ.pop("VIES_LIVE")
 store.reset()
 check(store.load_runs() == [] and store.load_decisions() == [] and len(store.known_vendors([])) == 1, "reset: no runs or decisions, vendors on file restored")
 
-# ---- the app offers exactly seven samples: one clean vendor and six edge cases
+# ---- the app offers seven samples (one clean vendor and six edge cases) and the corrected version of each edge case a vendor can fix
 by_case = {case[0]: case for case in CASES}
 shown = sorted(f[:-5] for f in os.listdir("sample_inputs"))
-check(shown == sorted(file for file, _ in SAMPLES) and len(shown) == 7, "samples: the app offers exactly seven (one clean vendor and six edge cases)", f"-> {shown}")
+check(shown == sorted(file for file, _ in SAMPLES + CORRECTED) and len(SAMPLES) == 7 and len(CORRECTED) == 5, "samples: seven samples and five corrected versions", f"-> {shown}")
 check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Pending", "Waiting for vendor"), ("Pending", "Waiting for vendor"), ("Pending", "Waiting for vendor"), ("Rejected", None), ("Pending", "Needs review"), ("Rejected", None)],
       "samples: they cover every outcome (approved, vendor to fix, rejected, needs review)")
-for file, case in SAMPLES:
+for file, case in SAMPLES + CORRECTED:
     with open(f"sample_inputs/{file}.json", encoding="utf-8") as handle:
         check(json.load(handle) == json.loads(json.dumps(by_case[case][1])), f"samples: {file} is the tested case {case}")
 
@@ -422,6 +422,21 @@ check(first_request.full_url == "https://api.brevo.com/v3/smtp/email" and first_
 check(json.loads(second_request.data)["headers"] == {"In-Reply-To": "<abc123@brevo>", "References": "<abc123@brevo>"} and json.loads(second_request.data)["subject"].startswith("Re: "), "real mail: the second mail is a reply in the same conversation")
 client.post("/reset")
 check(b"No messages yet" in client.get("/messages").data and outbox() == [], "messages: empty after a reset")
+
+# ---- the corrected samples, used exactly as a person would: the edge case first, then its fix (all through the web API)
+client.post("/reset")
+for edge, fixed, expected in [("02_edge_incomplete_form_wrong_document", "02b_corrected_incomplete_form_completed", "Approved"), ("03_edge_tax_id_wrong_for_country", "03b_corrected_tax_id_for_country", "Approved"),
+                              ("04_edge_name_nearly_matches_bank_account", "04b_corrected_bank_holder_name_matches", "Approved"),
+                              ("05_edge_identity_fields_contradict", "05b_corrected_identity_fields_consistent", "Approved"),
+                              ("07_edge_lookalike_characters_in_name", "07b_corrected_lookalike_name_spelled_right", "Pending")]:
+    first_run = run_web(mode="sample", sample=edge + ".json")["run_id"]
+    fixed_run = run_web(mode="sample", sample=fixed + ".json")["run_id"]
+    check(run(fixed_run)["final"] == expected, f"corrected sample: {fixed} after {edge[:2]} gives {expected}", run(fixed_run)["final"])
+    check(run(fixed_run)["final"] == "Pending" or run(first_run)["final"] != "Approved", f"corrected sample: {edge[:2]} itself was not approved")
+client.post("/reset")
+alone = run_web(mode="sample", sample="07b_corrected_lookalike_name_spelled_right.json")["run_id"]
+check(run(alone)["final"] == "Approved", "corrected sample: 07b on its own is approved")
+client.post("/reset")
 
 # ---- repeat attempts: a fix is a new application, and trial and error is caught
 from datetime import datetime as _dt

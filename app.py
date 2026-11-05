@@ -25,9 +25,9 @@ app.config["RATE_LIMIT"] = RATE_LIMIT_PER_HOUR
 app.secret_key = os.environ.get("SECRET_KEY", "demo-only-key")  # only signs flash messages; ponytail: no CSRF/auth, this is a demo
 
 STAGE_PAUSE = 0.35  # seconds per check, so the live view is watchable
-FIELDS = ["company_name", "entity_type", "country", "email", "mobile", "address", "tax_id", "pan", "bank_account_name", "bank_account_number", "bank_code", "website"]
+FIELDS = ["company_name", "country", "email", "mobile", "address", "tax_id", "pan", "bank_account_name", "bank_account_number", "bank_code", "website"]
 COUNTRY_NAMES = {"IN": "India", "US": "United States", "DE": "Germany", "Other": "Other (not supported yet)"}
-ENTITY, COUNTRY = ["company", "llp", "partnership", "sole_proprietor", "trust"], list(COUNTRY_NAMES)
+COUNTRY = list(COUNTRY_NAMES)
 DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT registration)", "registration": "Registration document",
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
 LEVELS = {1: "Vendor can fix", 2: "Needs review", 3: "Contradiction"}
@@ -61,7 +61,7 @@ def vendor_entered(run):
     return " | ".join(lines)
 
 
-SUBMITTED_FIELDS = [("company_name", "Company name"), ("entity_type", "Entity type"), ("country", "Country"), ("tax_id", "Tax ID"), ("pan", "PAN"),
+SUBMITTED_FIELDS = [("company_name", "Company name"), ("country", "Country"), ("tax_id", "Tax ID"), ("pan", "PAN"),
                     ("address", "Address"), ("email", "Email"), ("mobile", "Mobile"), ("website", "Website"),
                     ("bank_account_name", "Bank account holder"), ("bank_account_number", "Bank account"), ("bank_code", "Bank code")]
 
@@ -130,7 +130,7 @@ def sample_files():
 @app.get("/")
 def submit_page():
     samples = [(n, n[:-5].replace("_", " ") + (f"  ({SAMPLE_HINTS[n]})" if n in SAMPLE_HINTS else "")) for n in sample_files()]
-    return render_template("submit.html", samples=samples, entity=ENTITY, country=COUNTRY, names=COUNTRY_NAMES)
+    return render_template("submit.html", samples=samples, country=COUNTRY, names=COUNTRY_NAMES)
 
 
 def form_submission():

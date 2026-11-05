@@ -33,16 +33,16 @@ def make_iban(country, bban):
     return f"{country}{98 - int(digits) % 97:02d}{bban}"
 
 
-def indian(name, pan, account, mobile=None, email=None, address="12 MG Road, Bengaluru, Karnataka 560001", entity="company", holder=None, state="27", ifsc="HDFC0001234"):
+def indian(name, pan, account, mobile=None, email=None, address="12 MG Road, Bengaluru, Karnataka 560001", holder=None, state="27", ifsc="HDFC0001234"):
     slug = name.split()[0].lower()
-    return {"company_name": name, "entity_type": entity, "country": "IN", "email": email or f"accounts@{slug}.example", "mobile": mobile or "98" + account[-8:],
+    return {"company_name": name, "country": "IN", "email": email or f"accounts@{slug}.example", "mobile": mobile or "98" + account[-8:],
             "address": address, "tax_id": gstin_for(pan, state), "pan": pan, "bank_account_name": holder or name, "bank_account_number": account,
             "bank_code": ifsc, "website": f"https://www.{slug}.example", "documents": docs(slug)}
 
 
 def american(name, ein, account, mobile="2125550143", routing="021000021"):
     slug = name.split()[0].lower()
-    return {"company_name": name, "entity_type": "company", "country": "US", "email": f"ap@{slug}.example", "mobile": mobile,
+    return {"company_name": name, "country": "US", "email": f"ap@{slug}.example", "mobile": mobile,
             "address": "250 Hudson Street, New York, NY 10013", "tax_id": ein, "pan": None, "bank_account_name": name, "bank_account_number": account,
             "bank_code": routing, "website": f"https://www.{slug}.example", "documents": docs(slug)}
 
@@ -52,7 +52,7 @@ def german(name, base8, bban, bic, holder=None, iban=None, swap=False):
     check = german_vat_check_digit(base8)
     typed = base8[:2] + base8[3] + base8[2] + base8[4:] if swap else base8
     slug = name.split()[0].lower().replace("ü", "ue")
-    return {"company_name": name, "entity_type": "company", "country": "DE", "email": f"ap@{slug}.example", "mobile": "+4915112345" + base8[:3],
+    return {"company_name": name, "country": "DE", "email": f"ap@{slug}.example", "mobile": "+4915112345" + base8[:3],
             "address": "Hafenstrasse 12, 20457 Hamburg", "tax_id": f"DE{typed}{check}", "pan": None, "bank_account_name": holder or name,
             "bank_account_number": iban or make_iban("DE", bban), "bank_code": bic, "website": f"https://www.{slug}.example", "documents": docs(slug)}
 
@@ -126,7 +126,6 @@ CASES = [
     ("12_review_bank_account_shared_with_another_vendor", indian("Harbor Freight Private Limited", "HARCF6789P", ORION["bank_account_number"]), SEED, "Pending", "Needs review", None),
     ("13_review_company_id_under_new_name", edit(INDIA, company_name="Apex Holdings", bank_account_name="Apex Holdings"), SEED + [APEX], "Pending", "Needs review", None),
     ("14_review_shared_mobile_number", indian("Quill Stationers Private Limited", "QUICS0123T", "78000123456708", mobile=ORION["mobile"]), SEED, "Pending", "Needs review", None),
-    ("15_review_sole_proprietor_personal_account", indian("Kumar Hardware Traders", "RAJPK4821H", "76000123456706", entity="sole_proprietor", holder="Rajesh Kumar"), SEED, "Pending", "Needs review", None),
     ("16_review_unsupported_country", edit(indian("Atlas Metals Private Limited", "ATLCM7890Q", "75000123456709"), country="BR"), SEED, "Pending", "Needs review", None),
     ("17_review_german_company_foreign_bank", german("Kraftwerk Tools GmbH", "31987654", "", "WESTGB2LXXX", iban="GB82WEST12345698765432"), SEED, "Pending", "Needs review", None),
     ("18_review_possible_sanctions_match", indian("Northern Star Arm Trading Limited", "NORCN3456R", "77000123456707"), SEED, "Pending", "Needs review", None),

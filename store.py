@@ -11,7 +11,7 @@ from checks import company_key
 from config import ALREADY_REGISTERED, VENDORS_ON_FILE
 
 DB_PATH = os.environ.get("DB_PATH", "onboarding.db")  # the free host sets :memory: (see render.yaml): its file locking is unreliable and its disk is wiped on restart anyway
-SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "entity_type", "country", "bank_code", "mobile", "email"]
+SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "country", "bank_code", "mobile", "email"]
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, country TEXT, status TEXT, sub_status TEXT,
     rule_version TEXT, seconds REAL, decision TEXT, payload TEXT, snapshot TEXT, parent_id TEXT);

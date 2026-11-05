@@ -1,7 +1,7 @@
 RULE_VERSION = "6.0"
 
 REQUIRED_FIELDS = [
-    "company_name", "entity_type", "country", "email", "mobile",
+    "company_name", "country", "email", "mobile",
     "address", "tax_id", "bank_account_name", "bank_account_number", "bank_code",
 ]
 
@@ -16,13 +16,8 @@ REQUIRED_DOCS = ["tax_document", "registration"]
 BANK_PROOF_DOCS = ["voided_cheque", "passbook"]
 ALLOWED_FILE_TYPES = ["pdf", "png", "jpg", "jpeg"]
 
-PAN_HOLDER_CODES = {
-    "company": ["C"],
-    "sole_proprietor": ["P"],
-    "partnership": ["F"],
-    "llp": ["F"],
-    "trust": ["T"],
-}
+# Only companies are onboarded (no sole proprietors, partnerships or trusts), so a PAN must be a company PAN: its 4th letter is C.
+COMPANY_PAN_CODE = "C"
 
 SUFFIX_WORDS = {
     "private", "pvt", "limited", "ltd", "llp", "company", "co",
@@ -53,12 +48,11 @@ REASON_LABELS = {
     "EMPTY_FILE": "A document file is empty",
     "WRONG_SLOT": "A document was uploaded in the wrong slot",
     "GSTIN_PAN_MISMATCH": "GSTIN and PAN do not match",
-    "PAN_ENTITY_MISMATCH": "PAN type does not fit the entity type",
+    "PAN_ENTITY_MISMATCH": "PAN is not a company PAN",
     "ID_COUNTRY_MISMATCH": "Tax ID does not belong to the stated country",
     "LEGAL_FORM_DIFFERENCE": "Legal form differs (for example LLP vs LLC)",
     "SUFFIX_DIFFERENCE": "Company name differs only in its suffix",
     "NAME_NEAR_MISS": "Company and bank holder names are similar, not identical",
-    "SOLE_PROP_NAME_REVIEW": "Sole proprietor: holder name differs from company name",
     "NAME_MISMATCH": "Company and bank holder names do not match",
     "DUPLICATE_KEY_NEW_NAME": "Same company ID already known under a different name",
     "DUPLICATE_BANK_ACCOUNT": "Bank account already used by another vendor",
@@ -96,7 +90,6 @@ FIELD_LABELS = {
     "bank_account_name": "Bank account holder",
     "tax_id": "Tax ID",
     "pan": "PAN",
-    "entity_type": "Entity type",
     "country": "Country",
     "bank_account_number": "Bank account",
     "bank_code": "Bank code",
@@ -113,9 +106,8 @@ EVIDENCE_FIELDS = {
     "NAME_MISMATCH": NAME_FIELDS,
     "SUFFIX_DIFFERENCE": NAME_FIELDS,
     "LEGAL_FORM_DIFFERENCE": NAME_FIELDS,
-    "SOLE_PROP_NAME_REVIEW": NAME_FIELDS + ["entity_type"],
     "GSTIN_PAN_MISMATCH": ["tax_id", "pan"],
-    "PAN_ENTITY_MISMATCH": ["pan", "entity_type"],
+    "PAN_ENTITY_MISMATCH": ["pan"],
     "ID_COUNTRY_MISMATCH": ["country", "tax_id"],
     "UNSUPPORTED_COUNTRY": ["country"],
     "DUPLICATE_BANK_ACCOUNT": ["bank_account_number", "bank_code"],
@@ -200,7 +192,6 @@ VENDOR_REASONS = {
     "DUPLICATE_KEY_NEW_NAME": "we could not match your company name to its tax registration",
     "EXISTING_VENDOR": "we could not verify the changes to your company details",
     "SHARED_CONTACT": "we could not verify your contact details",
-    "SOLE_PROP_NAME_REVIEW": "we could not match the bank account holder to your business",
     "UNSUPPORTED_COUNTRY": "we do not yet onboard vendors from your country",
     "NAME_NON_LATIN": "we could not compare the names you gave",
     "BANK_COUNTRY_DIFFERS": "your bank is in a different country than your company",
@@ -216,7 +207,6 @@ VENDOR_DOCUMENTS = {
     "DUPLICATE_KEY_NEW_NAME": "your company registration certificate showing your current legal name",
     "EXISTING_VENDOR": "your company registration certificate or a letter describing what changed",
     "SHARED_CONTACT": "a phone number or email that belongs only to your company",
-    "SOLE_PROP_NAME_REVIEW": "a document showing that you own the business and hold the bank account",
     "UNSUPPORTED_COUNTRY": "your company registration and tax registration documents",
     "NAME_NON_LATIN": "your registration certificate and a bank letter with the names in Latin letters",
     "BANK_COUNTRY_DIFFERS": "a bank letter confirming the account and why it is held in another country",

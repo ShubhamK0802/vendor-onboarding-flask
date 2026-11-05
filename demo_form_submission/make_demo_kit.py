@@ -116,7 +116,7 @@ def main():
         submission["documents"][slot] = {"filename": file_name, "file_type": "pdf", "size_bytes": write_pdf(file_name, draw()), "declared_type": slot}
     with open(os.path.join(HERE, "vendor_submission.json"), "w", encoding="utf-8") as handle:
         json.dump(submission, handle, indent=2)
-    rows = "\n".join(f"| {label} | `{VENDOR[key]}` |" for key, label in [("company_name", "Company name"), ("entity_type", "Entity type"), ("country", "Country"), ("website", "Website"),
+    rows = "\n".join(f"| {label} | `{VENDOR[key]}` |" for key, label in [("company_name", "Company name"), ("country", "Country"), ("website", "Website"),
                                                                        ("email", "Email"), ("mobile", "Mobile number"), ("address", "Address"), ("tax_id", "Tax ID (GSTIN)"), ("pan", "PAN"),
                                                                        ("bank_account_name", "Bank account holder name"), ("bank_account_number", "Bank account number"), ("bank_code", "Bank code (IFSC)")])
     uploads = "\n".join(f"| {SLOT_NAMES[slot]} | `{name}` |" for slot, (name, _) in DOCUMENTS.items())

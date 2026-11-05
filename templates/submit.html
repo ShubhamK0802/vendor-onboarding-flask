@@ -10,7 +10,6 @@
     <form id="tab-form" class="tab" data-mode="form" autocomplete="off">
       <div class="fields">
         <label>Company name<input name="company_name"></label>
-        <label>Entity type<select name="entity_type">{% for e in entity %}<option>{{ e }}</option>{% endfor %}</select></label>
         <label>Country<select name="country">{% for c in country %}<option value="{{ c }}">{{ names[c] }}</option>{% endfor %}</select></label>
         <label>Website (optional)<input name="website"></label>
         <label>Email<input name="email" type="text"></label>

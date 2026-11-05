@@ -7,7 +7,6 @@ marked SAMPLE. Expected result: **Approved**.
 | Field | Value |
 |---|---|
 | Company name | `Horizon Textiles Private Limited` |
-| Entity type | `company` |
 | Country | `IN` |
 | Website | `https://www.horizon.example` |
 | Email | `accounts@horizontextiles.example` |

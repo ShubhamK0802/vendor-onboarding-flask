@@ -3,6 +3,7 @@
 | Choice | Why |
 |---|---|
 | **Fixed rules, no AI deciding** | Every outcome can be explained and repeated exactly; a payment-fraud control must be auditable. |
+| **Companies only** | A sole proprietor often banks in their own name, and partnerships and trusts have their own rules. Supporting one type well beats supporting five loosely; the PAN of a company always has C as its 4th letter. |
 | **India, US, Germany** | India is the home market, the US the largest foreign one, and Germany brings EU rules (IBAN, VAT) that differ from both. Other countries go to a reviewer. |
 | **Three outcomes: Approved, Pending (review), Rejected** | Zamp asks for approved, pending or rejected. Pending means only a person can decide. Nothing is pending on the vendor, so there is no waiting state. |
 | **Mistakes and gaps are Rejected, with a list of what to correct** | The vendor can do nothing to an existing application, so "pending" would be untrue. They file a new one. |

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from rapidfuzz import fuzz
 
 from config import (
-    ALLOWED_FILE_TYPES, ATTEMPT_WINDOW_DAYS, ATTEMPTS_BEFORE_REVIEW, BANK_PROOF_DOCS, DOC_LABELS, EVIDENCE_FIELDS, FIELD_LABELS, FIX, NAME_LINK_SCORE, REJECT_ON_ITS_OWN, LEGAL_FORMS, NAME_REVIEW_THRESHOLD, PAN_HOLDER_CODES, RED,
+    ALLOWED_FILE_TYPES, ATTEMPT_WINDOW_DAYS, ATTEMPTS_BEFORE_REVIEW, BANK_PROOF_DOCS, DOC_LABELS, EVIDENCE_FIELDS, FIELD_LABELS, FIX, NAME_LINK_SCORE, REJECT_ON_ITS_OWN, LEGAL_FORMS, NAME_REVIEW_THRESHOLD, COMPANY_PAN_CODE, RED,
     REQUIRED_BY_COUNTRY, REQUIRED_DOCS, REQUIRED_FIELDS, REVIEW, STRICT_SUFFIX_MATCH, SUPPORTED_COUNTRIES, EMBARGOED_COUNTRIES,
 )
 from normalize import clean_value, core_name, normalize_id, normalize_name
@@ -229,13 +229,12 @@ TAX_ID_KINDS = {"IN": (GSTIN_PATTERN, "an Indian GSTIN"), "US": (EIN_PATTERN, "a
 
 def check_identity(submission):
     country, tax_id = normalize_id(submission.get("country")), normalize_id(submission.get("tax_id"))
-    pan, entity = normalize_id(submission.get("pan")), clean_value(submission.get("entity_type"))
+    pan = normalize_id(submission.get("pan"))
     findings = []
     if country == "IN" and tax_id and pan and len(tax_id) == 15 and tax_id[2:12] != pan:
         findings.append(make_finding("GSTIN_PAN_MISMATCH", RED, "The PAN inside your GSTIN differs from the PAN you gave"))
-    allowed = PAN_HOLDER_CODES.get((entity or "").lower().replace(" ", "_"))
-    if country == "IN" and pan and len(pan) == 10 and allowed and pan[3] not in allowed:
-        findings.append(make_finding("PAN_ENTITY_MISMATCH", RED, "Your PAN type does not fit your entity type"))
+    if country == "IN" and pan and len(pan) == 10 and pan[3] != COMPANY_PAN_CODE:
+        findings.append(make_finding("PAN_ENTITY_MISMATCH", RED, "Your PAN is not a company PAN (its 4th letter should be C)"))
     for other, (pattern, kind) in TAX_ID_KINDS.items():  # a tax ID that is valid in ANOTHER supported country contradicts the claimed country
         if country in SUPPORTED_COUNTRIES and tax_id and other != country and pattern.fullmatch(tax_id):
             findings.append(make_finding("ID_COUNTRY_MISMATCH", RED, f"The tax ID looks like {kind}: check the country"))
@@ -280,9 +279,6 @@ def check_name_match(submission):
     score = fuzz.token_sort_ratio(company, holder)
     if score >= NAME_REVIEW_THRESHOLD:  # a typo, or a lookalike name (a known fraud tactic): the vendor corrects it once; the same finding twice rejects
         return make_result("name_match", [make_finding("NAME_NEAR_MISS", FIX, "Make the account holder name match your company name exactly")])
-    if (clean_value(submission.get("entity_type")) or "").lower().replace(" ", "_") == "sole_proprietor":
-        return make_result("name_match", [make_finding("SOLE_PROP_NAME_REVIEW", REVIEW,
-            "Account holder name differs from the business name; for a sole proprietor this can be the owner's own name, so a reviewer will confirm")])
     return make_result("name_match", [make_finding("NAME_MISMATCH", RED, "Use a bank account in your company's name, or attach a signed authorisation letter")])
 
 

@@ -37,7 +37,7 @@
 
 ## Engineering
 - Flask + SQLite + rapidfuzz; gunicorn for hosting; Render blueprint included.
-- 216 automated checks (`python run_tests.py`): every rule, the full workflow, every web route, and the sample PDFs through the form.
+- over 200 automated checks (`python run_tests.py`): every rule, the full workflow, every web route, and the sample PDFs through the form.
 - Rules in plain config (`config.py`), no AI in the decision, every finding has a code.
 - Form-submission kit (`demo_form_submission/`): sample JSON and four sample PDFs.
 - Working rule: test locally, then push, then deploy.

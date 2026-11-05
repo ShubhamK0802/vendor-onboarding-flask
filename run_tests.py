@@ -245,7 +245,7 @@ check(b"enter your name" in client.post(f"/review/{pending_id}", data={"decision
 check(b"Approved by Asha" in client.post(f"/review/{pending_id}", data={"reviewer": "Asha", "decision": "Approved", "note": "Checked by phone"}, follow_redirects=True).data, "web: a decision with name and reason is saved")
 
 form = {f: "" for f in app.FIELDS}
-form.update(mode="form", company_name="Form Vendor LLC", country="US", entity_type="company", tax_id="12-3456789", tax_document=(io.BytesIO(b"%PDF-1.4 hello"), "w9.pdf"))
+form.update(mode="form", company_name="Form Vendor LLC", country="US", tax_id="12-3456789", tax_document=(io.BytesIO(b"%PDF-1.4 hello"), "w9.pdf"))
 done = run_web(**form)
 check(client.get(f"/doc/{done['run_id']}/tax_document").data == b"%PDF-1.4 hello", "web: an uploaded document can be downloaded back")
 check(client.get(f"/api/prefill/{done['run_id']}").status_code == 404 and b"corrected resubmission" not in client.get("/").data, "web: there is no resubmission link and no prefill: a fix is a new application")
@@ -393,7 +393,7 @@ class Reply:
 real_urlopen = mailer.urllib.request.urlopen
 mailer.urllib.request.urlopen = lambda request, timeout=None: (captured.append(request), Reply())[1]
 os.environ.update(BREVO_API_KEY="test-key", MAIL_FROM="sender@example.org", MAIL_ALLOWLIST="Shubham@Example.org, other@example.org")
-mine = run_web(mode="json", json_file=(io.BytesIO(json.dumps(dict(CASE["15_review_sole_proprietor_personal_account"], email="shubham@example.org")).encode()), "mine.json"))["run_id"]
+mine = run_web(mode="json", json_file=(io.BytesIO(json.dumps(dict(CASE["14_review_shared_mobile_number"], email="shubham@example.org")).encode()), "mine.json"))["run_id"]
 client.post(f"/review/{mine}", data={"reviewer": "Asha", "decision": "Approved", "note": "ok ok ok"})
 stranger = run_case("16_review_unsupported_country")["run_id"]
 mailer.deliver_queued()

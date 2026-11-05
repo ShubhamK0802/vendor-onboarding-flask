@@ -45,7 +45,7 @@ There is no waiting state, no timer and no reminder: nothing is pending on the v
 ## 5. Rules by stage
 
 ### 5.1 Completeness
-- Required for all: company name, entity type, country, email, mobile, address, tax ID, bank account holder, bank account number, bank code.
+- Required for all: company name, country, email, mobile, address, tax ID, bank account holder, bank account number, bank code.
 - India also requires PAN.
 - Missing → `MISSING_FIELD` (FIX).
 
@@ -73,7 +73,7 @@ There is no waiting state, no timer and no reminder: nothing is pending on the v
 | Finding | Level | Trigger |
 |---|---|---|
 | `GSTIN_PAN_MISMATCH` | RED | The PAN inside the GSTIN differs from the PAN given |
-| `PAN_ENTITY_MISMATCH` | RED | PAN 4th letter does not fit entity type (company C, individual P, partnership/LLP F, trust T) |
+| `PAN_ENTITY_MISMATCH` | RED | The PAN is not a company PAN (its 4th letter is not C). Only companies are onboarded |
 | `ID_COUNTRY_MISMATCH` | RED | The tax ID is shaped like another country's ID |
 | `BANK_COUNTRY_DIFFERS` | REVIEW | German company with an IBAN from another country |
 
@@ -88,8 +88,7 @@ Names are compared after removing company suffixes (Private, Pvt, Limited, Ltd, 
 | 4 | `LEGAL_FORM_DIFFERENCE` | FIX | Different legal form (LLP vs LLC) |
 | 5 | `SUFFIX_DIFFERENCE` | REVIEW | Same name, different suffix |
 | 6 | `NAME_NEAR_MISS` | FIX | Similarity 80 or more but not identical |
-| 7 | `SOLE_PROP_NAME_REVIEW` | REVIEW | Sole proprietor: holder differs from company |
-| 8 | `NAME_MISMATCH` | RED | Names clearly different |
+| 7 | `NAME_MISMATCH` | RED | Names clearly different |
 
 Identical names pass. Names such as *34square* or *add360* are fine: only two names are compared with each other, never a name against a pattern.
 
@@ -165,4 +164,4 @@ The vendor is never told what matched a sanctions list, which other vendor was i
 - **Vendor ID**: `V` + country code + 6 hex, for example `VIN3FA9C2`. Issued to every applicant, one per applicant. Internal: shown to staff (reviewer desk, dashboard, CSV), never to the vendor.
 
 ## 9. Known limits
-Registry and sanctions are demo data. Bank-account ownership is not verified with a bank. Document contents are not read, so a forged document of the right type passes that stage. India, US and Germany only; one bank account per submission. No document expiry tracking. Mail is simulated unless Brevo is configured. SQLite resets on free hosting. The form has no live in-field validation and there is no phone-number format rule per country (the server rules decide).
+Registry and sanctions are demo data. Bank-account ownership is not verified with a bank. Document contents are not read, so a forged document of the right type passes that stage. Companies only (no sole proprietors, partnerships or trusts); India, US and Germany only; one bank account per submission. No document expiry tracking. Mail is simulated unless Brevo is configured. SQLite resets on free hosting. The form has no live in-field validation and there is no phone-number format rule per country (the server rules decide).

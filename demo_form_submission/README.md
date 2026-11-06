@@ -34,9 +34,9 @@ On the **JSON file** tab, upload `vendor_submission.json`. It carries the same v
 ## Make it interesting: change one thing and submit again
 | Change | What you should see |
 |---|---|
-| Bank account holder: `Horizon Textile Private Limited` (one letter off) | Rejected, with what to correct. Fix it and submit a new application: it is approved. (A 4th try for the same company goes to a reviewer, even if perfect.) |
+| Bank account holder: `Horizon Textile Private Limited` (one letter off) | Pending: Vendor action required. Correct the same application and rerun every check. |
 | Bank account number: replace a 0 with the letter `O` | Rejected outright: look-alike characters |
-| Leave the tax ID empty and upload no cheque | Rejected with a numbered list of what to correct |
+| Leave the tax ID empty and upload no cheque | Pending: Vendor action required, with a numbered correction list |
 | Submit the exact same form a second time | Approved: already registered (nothing new is created, and the vendor sees no vendor ID) |
 
 A reviewer can open the submission and download these PDFs from **View submission**. The app stores them but does not read them.

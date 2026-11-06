@@ -4,19 +4,21 @@ from checks import (
     check_completeness, check_country, check_formats, check_documents,
     check_identity, check_name_match, check_verification, check_duplicates, check_attempts,
 )
-from config import ALREADY_REGISTERED, FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION
+from config import ALREADY_REGISTERED, FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION, VENDOR_ACTION
 
 
 def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
     if status == "Approved":
         return "You are already registered with us. No new application is needed." if sub_status == ALREADY_REGISTERED else "Your application is approved."
-    if status == "Pending":
+    if status == "Pending" and sub_status == NEEDS_REVIEW:
         return "Your application is under review. We will reach back to you if anything is needed."
+    if status == "Pending":
+        problems = "this problem" if len(fixes) == 1 else "these problems"
+        listed = "\n".join(f"{i}. {fix}" for i, fix in enumerate(fixes, 1))
+        return f"Your application needs more information. We found {problems}:\n{listed}\nPlease correct {'it' if len(fixes) == 1 else 'these'} and continue this application."
     if reject_reasons:
-        return "Your application is rejected because " + "; ".join(reject_reasons) + ". If this was a mistake, submit a new application."
-    problems = "this problem" if len(fixes) == 1 else "these problems"  # only mistakes or gaps the vendor can correct: what is wrong, then what to do
-    listed = "\n".join(f"{i}. {fix}" for i, fix in enumerate(fixes, 1))
-    return f"Your application is rejected. We found {problems}:\n{listed}\nPlease correct {'it' if len(fixes) == 1 else 'these'} and submit a new application."
+        return "Your application is rejected because " + "; ".join(reject_reasons) + "."
+    return "Your application is rejected."
 
 
 def decide(stage_results):
@@ -31,10 +33,12 @@ def decide(stage_results):
         status, sub_status = "Approved", None
     elif all(f["code"] == "DUPLICATE_APPLICATION" for f in findings):  # an exact repeat of an onboarded vendor: nothing to decide, nothing new to create
         status, sub_status = "Approved", ALREADY_REGISTERED
-    elif REVIEW in levels and not reject_reasons and red_flags < 2:  # a lone contradiction is a typo the vendor can fix; two at once are not
+    elif reject_reasons or red_flags >= 2:
+        status, sub_status = "Rejected", None
+    elif REVIEW in levels:
         status, sub_status = "Pending", NEEDS_REVIEW
     else:
-        status, sub_status = "Rejected", None
+        status, sub_status = "Pending", VENDOR_ACTION
 
     if status == "Rejected" and red_flags >= 2:
         reject_reasons.append("the details you gave contradict each other")

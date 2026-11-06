@@ -16,12 +16,13 @@ from markupsafe import Markup  # noqa: E402
 
 import mailer  # noqa: E402
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, RATE_LIMIT_PER_HOUR, RULE_VERSION  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, RATE_LIMIT_PER_HOUR, RULE_VERSION, VENDOR_ACTION  # noqa: E402
 from checks import link_reasons  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
 app = Flask(__name__)
 app.config["RATE_LIMIT"] = RATE_LIMIT_PER_HOUR
+app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
 app.secret_key = os.environ.get("SECRET_KEY", "demo-only-key")  # only signs flash messages; ponytail: no CSRF/auth, this is a demo
 
 STAGE_PAUSE = 0.35  # seconds per check, so the live view is watchable
@@ -39,6 +40,8 @@ SAMPLE_HINTS = {"06_edge_existing_vendor_changes_bank_account.json": "submit 01 
                 "07b_corrected_lookalike_name_spelled_right.json": "the fix for 07: approved alone, but a reviewer decides if 07 was submitted first"}
 SEEN = defaultdict(list)  # source -> times of its recent submissions (rate limit). ponytail: in memory, like PROGRESS
 PROGRESS = {}  # token -> live progress of one run. ponytail: in-memory, so one worker process; use the database if it must scale out
+HIGH_RISK_BANK_CODES = {"BANK_DETAILS_CHANGED", "DUPLICATE_BANK_ACCOUNT"}
+VERIFICATION_METHODS = {"known_contact": "Callback to a trusted contact", "bank_confirmation": "Independent bank confirmation"}
 
 
 # ---------------------------------------------------------------- template helpers
@@ -96,6 +99,12 @@ def system_verdict(run):
     return f"{run['status']}: {run['sub_status']}" if run["sub_status"] else run["status"]
 
 
+def current_vendor_message(run):
+    if run["decision_by"]:
+        return mailer.decision_mail(run, run["decision_by"]["decision"])[1]
+    return run["decision"]["vendor_message"]
+
+
 def effect(finding):
     """What a finding does to the run, in words (a lone contradiction is fixable; two at once reject)."""
     return "Rejects the application" if finding["code"] in REJECT_ON_ITS_OWN else LEVELS[finding["level"]]
@@ -107,8 +116,9 @@ def age(run):
 
 
 app.jinja_env.globals.update(submitted=submitted, effect=effect, badge=badge, reasons=reasons, vendor_entered=vendor_entered, outcome=outcome, system_verdict=system_verdict,
+                             current_vendor_message=current_vendor_message,
                              levels=LEVELS, reason_labels=REASON_LABELS, doc_slots=DOC_SLOTS, docs_for=lambda rid: store.get_docs(rid, with_data=False),
-                             rule_version=RULE_VERSION)
+                             rule_version=RULE_VERSION, high_risk_bank_codes=HIGH_RISK_BANK_CODES, verification_methods=VERIFICATION_METHODS)
 
 
 @app.context_processor
@@ -129,25 +139,51 @@ def sample_files():
 
 @app.get("/")
 def submit_page():
+    return render_submit()
+
+
+def render_submit(prefill=None, correction=None):
     samples = [(n, n[:-5].replace("_", " ") + (f"  ({SAMPLE_HINTS[n]})" if n in SAMPLE_HINTS else "")) for n in sample_files()]
-    return render_template("submit.html", samples=samples, country=COUNTRY, names=COUNTRY_NAMES)
+    return render_template("submit.html", samples=samples, country=COUNTRY, names=COUNTRY_NAMES,
+                           prefill=prefill or {}, correction=correction)
 
 
-def form_submission():
+@app.get("/correct/<run_id>")
+def correct_application(run_id):
+    run = get_run(run_id)
+    if not run:
+        abort(404)
+    if run["waiting_on"] != "Vendor":
+        flash("This application is not waiting for corrections.", "error")
+        return redirect(url_for("submit_page"))
+    return render_submit(run["payload"], run)
+
+
+def form_submission(existing=None):
     documents, files = {}, {}
+    stored = {d["slot"]: d for d in store.get_docs(existing["run_id"]) } if existing else {}
+    earlier = (existing["payload"].get("documents") or {}) if existing else {}
     for slot in DOC_SLOTS:
         upload = request.files.get(slot)
         if upload and upload.filename:
             data = upload.read()
+            extension = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+            signature_valid = (extension == "pdf" and data.startswith(b"%PDF-")) or (extension == "png" and data.startswith(b"\x89PNG\r\n\x1a\n")) \
+                              or (extension in ("jpg", "jpeg") and data.startswith(b"\xff\xd8\xff"))
             files[slot] = (upload.filename, data)
-            documents[slot] = {"filename": upload.filename, "file_type": upload.filename.rsplit(".", 1)[-1] if "." in upload.filename else "",
-                               "size_bytes": len(data), "declared_type": slot, "sha256": hashlib.sha256(data).hexdigest()}  # the hash spots a re-used file
+            documents[slot] = {"filename": upload.filename, "file_type": extension,
+                               "size_bytes": len(data), "declared_type": slot, "signature_valid": signature_valid,
+                               "sha256": hashlib.sha256(data).hexdigest()}  # the hash spots a re-used file
+        elif earlier.get(slot):
+            documents[slot] = earlier[slot]
+            if slot in stored:
+                files[slot] = (stored[slot]["filename"], stored[slot]["data"])
         else:
             documents[slot] = None
     return {**{f: request.form.get(f, "") for f in FIELDS}, "documents": documents}, files
 
 
-def worker(token, submission, files):
+def worker(token, submission, files, parent_id=None):
     progress = PROGRESS[token]
     try:
         history = store.load_runs()
@@ -162,8 +198,8 @@ def worker(token, submission, files):
         seconds = max(time.perf_counter() - started - STAGE_PAUSE * len(stages), 0)
         # The same applicant keeps one vendor ID across attempts, even when the tax ID was the thing that was wrong or the earlier attempt was rejected.
         # Only strong links count here (a shared name or file is a hint for the reviewer, not proof of identity).
-        same_as = next((r["run_id"] for r in reversed(history) if {"company ID", "bank account", "phone", "email"} & set(link_reasons(submission, r))), None)
-        progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, files=files, same_as=same_as)
+        same_as = parent_id or next((r["run_id"] for r in reversed(history) if {"company ID", "bank account", "phone", "email"} & set(link_reasons(submission, r))), None)
+        progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, files=files, same_as=same_as, parent_id=parent_id)
         mailer.enqueue_verdict(progress["run_id"])  # the vendor is told the verdict; a background worker sends it
     except Exception as error:  # never leave the page spinning
         progress["error"] = f"Something went wrong: {error}"
@@ -184,6 +220,9 @@ def api_submit():
     if too_many():
         return jsonify(error="Too many submissions from your network in the last hour. Please try again later."), 429
     mode, files = request.form.get("mode"), None
+    revision = get_run(request.form.get("revision_of")) if request.form.get("revision_of") else None
+    if request.form.get("revision_of") and (not revision or revision["waiting_on"] != "Vendor"):
+        return jsonify(error="This application is not waiting for corrections"), 400
     if mode == "sample":
         name = request.form.get("sample")
         if name not in sample_files():  # only files from the sample folder, never a path from the browser
@@ -196,14 +235,15 @@ def api_submit():
             return jsonify(error="Choose a JSON file first"), 400
         submission, error = parse_submission(upload.read().decode("utf-8", errors="replace"))
     else:
-        (submission, files), error = form_submission(), None
+        (submission, files), error = form_submission(revision), None
     if error:
         return jsonify(error=error), 400
     token = uuid.uuid4().hex[:10]
     if len(PROGRESS) > 200:
         PROGRESS.pop(next(iter(PROGRESS)))
     PROGRESS[token] = {"stages": [], "done": False, "run_id": None, "error": None}
-    threading.Thread(target=worker, args=(token, submission, files), daemon=True).start()
+    parent_id = (revision["application_id"] if revision else None)
+    threading.Thread(target=worker, args=(token, submission, files, parent_id), daemon=True).start()
     return jsonify(token=token)
 
 
@@ -285,6 +325,7 @@ def review_release(run_id):
 @app.post("/review/<run_id>")
 def review_decision(run_id):
     reviewer, note, decision = request.form.get("reviewer", "").strip(), request.form.get("note", "").strip(), request.form.get("decision")
+    verification_method = request.form.get("verification_method", "")
     run, back = get_run(run_id), back_args(request.form)
     holder = store.claims().get(run_id)
     if not reviewable(run):
@@ -292,12 +333,20 @@ def review_decision(run_id):
     elif not reviewer or not note:
         flash("Please enter your name and a reason. Every decision needs both.", "error")
         return redirect(url_for("review_page", run=run_id, **back))
-    elif holder and holder["reviewer"].lower() != reviewer.lower():
+    elif not holder:
+        flash("Take this submission before deciding it.", "error")
+        return redirect(url_for("review_page", run=run_id, **back))
+    elif holder["reviewer"].lower() != reviewer.lower():
         flash(f"{holder['reviewer']} is handling this submission, so you cannot decide it. Ask them to release it.", "error")
         return redirect(url_for("review_page", run=run_id, **back))
     elif decision not in ("Approved", "Rejected", "Info requested"):
         flash("Unknown decision.", "error")
+    elif decision == "Approved" and HIGH_RISK_BANK_CODES.intersection(run["codes"]) and verification_method not in VERIFICATION_METHODS:
+        flash("Record an independent verification method before approving this bank-risk case.", "error")
+        return redirect(url_for("review_page", run=run_id, **back))
     else:
+        if decision == "Approved" and verification_method in VERIFICATION_METHODS:
+            note = f"Independent verification: {VERIFICATION_METHODS[verification_method]}. {note}"
         mailer.enqueue_decision(run_id, store.save_decision(run_id, decision, note, reviewer))  # and told the outcome, in the same thread
         flash(f"{run['company']}: {decision} by {reviewer}.", "ok")
     return redirect(url_for("review_page", **back))  # opens the next one in the same order
@@ -308,20 +357,22 @@ def review_decision(run_id):
 @app.get("/dashboard")
 def dashboard():
     runs = store.load_runs()
-    total = len(runs)
+    current = [r for r in runs if not r["superseded_by"]]
+    total = len(current)
     pct = lambda n: f"{n / total:.0%}" if total else "0%"
-    count = lambda **kw: sum(all(r[k] == v for k, v in kw.items()) for r in runs)
-    handled = sum(r["sub_status"] != NEEDS_REVIEW for r in runs)
-    metrics = [("Handled without a human", handled, pct(handled), "Approved or rejected by the rules alone"),
-               ("Approved automatically", count(status="Approved"), pct(count(status="Approved")), "The rules approved it with no human involved"),
+    count = lambda **kw: sum(all(r[k] == v for k, v in kw.items()) for r in current)
+    handled = sum(r["sub_status"] != NEEDS_REVIEW for r in current)
+    metrics = [("Sorted without a reviewer", handled, pct(handled), "The rules approved, rejected or returned it with a clear next step"),
+               ("Approved automatically", count(final="Approved", decided_by="Automatic"), pct(count(final="Approved", decided_by="Automatic")), "The rules approved it with no human involved"),
+               ("Vendor action required", count(final_sub=VENDOR_ACTION), pct(count(final_sub=VENDOR_ACTION)), "The application stays open while the vendor corrects it"),
                ("Sent to a reviewer", count(sub_status=NEEDS_REVIEW), pct(count(sub_status=NEEDS_REVIEW)), "The rules could not decide, so a reviewer must"),
-               ("Rejected", count(status="Rejected"), pct(count(status="Rejected")), "Mistakes, gaps or red flags: the vendor is told why and can apply again")]
+               ("Rejected", count(final="Rejected"), pct(count(final="Rejected")), "A terminal rule or reviewer decision stopped the application")]
     show = request.args.get("show", "All")
     history = [r for r in reversed(runs) if show in ("All", r["final"])]
-    return render_template("dashboard.html", runs=runs, total=total, metrics=metrics, show=show, history=history,
+    return render_template("dashboard.html", runs=runs, total=total, submissions=len(runs), metrics=metrics, show=show, history=history,
                            with_reviewer=count(waiting_on="Reviewer"),
-                           outcomes=Counter(outcome(r) for r in runs).most_common(),
-                           top=Counter(c for r in runs for c in set(r["codes"])).most_common(),
+                           outcomes=Counter(outcome(r) for r in current).most_common(),
+                           top=Counter(c for r in current for c in set(r["codes"])).most_common(),
                            picked=next((r for r in runs if r["run_id"] == request.args.get("run")), None))
 
 

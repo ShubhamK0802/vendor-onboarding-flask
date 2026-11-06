@@ -1,7 +1,8 @@
 <div class="run">
   <p>{{ badge(run.final, run.final_sub) }}</p>
-  {% if vendor_view %}<div class="note">{{ run.decision.vendor_message }}</div>{% endif %}  {# only the vendor's own result page shows it; reviewers and the dashboard do not #}
-  {% if run.decision_by %}
+  {% if vendor_view %}<div class="note">{{ current_vendor_message(run) }}</div>{% endif %}  {# only the vendor's own result page shows it; reviewers and the dashboard do not #}
+  {% if vendor_view and run.waiting_on == 'Vendor' %}<p><a class="button primary" href="{{ url_for('correct_application', run_id=run.run_id) }}">Correct application</a></p>{% endif %}
+  {% if run.decision_by and not vendor_view %}
   <p><b>Reviewer decision:</b> {{ run.decision_by.decision }} by {{ run.decision_by.reviewer }} at {{ run.decision_by.ts.replace('T', ' ') }}. Reason: {{ run.decision_by.note }}</p>
   {% endif %}
 
@@ -39,5 +40,5 @@
     {% else %}<p class="muted">No findings.</p>{% endif %}
   </details>{% endif %}
 
-  <p class="muted">Submission {{ run.run_id }}{% if run.vendor_id and not vendor_view %} · Vendor {{ run.vendor_id }}{% endif %} · rule version {{ run.rule_version }}</p>
+  <p class="muted">Application {{ run.application_id }}{% if run.run_id != run.application_id %} · Revision {{ run.run_id }}{% endif %}{% if run.vendor_id and not vendor_view %} · Vendor {{ run.vendor_id }}{% endif %} · rule version {{ run.rule_version }}</p>
 </div>

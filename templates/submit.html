@@ -4,37 +4,42 @@
   <section class="card">
     <div class="tabs">
       <button type="button" class="tab-btn on" data-tab="tab-form">Vendor form</button>
+      {% if not correction %}
       <button type="button" class="tab-btn" data-tab="tab-sample">JSON file</button>
+      {% endif %}
     </div>
 
+    {% if correction %}<div class="note"><b>Correct application {{ correction.application_id }}</b><br>Update the requested information below. Existing documents are kept unless you replace them.</div>{% endif %}
+
     <form id="tab-form" class="tab" data-mode="form" autocomplete="off">
+      {% if correction %}<input type="hidden" name="revision_of" value="{{ correction.run_id }}">{% endif %}
       <div class="fields">
-        <label>Company name<input name="company_name"></label>
-        <label>Country<select name="country">{% for c in country %}<option value="{{ c }}">{{ names[c] }}</option>{% endfor %}</select></label>
-        <label>Website (optional)<input name="website"></label>
-        <label>Email<input name="email" type="text"></label>
-        <label>Mobile number<input name="mobile"></label>
-        <label class="wide">Address<textarea name="address" rows="2"></textarea></label>
-        <label>Tax ID (GSTIN for India, EIN for the US, VAT ID for Germany)<input name="tax_id"></label>
-        <label>PAN (India only)<input name="pan"></label>
-        <label>Bank account holder name<input name="bank_account_name"></label>
-        <label>Bank account number (IBAN for Germany)<input name="bank_account_number"></label>
-        <label class="wide">Bank code (IFSC for India, routing number for the US, BIC for Germany)<input name="bank_code"></label>
+        <label>Company name<input name="company_name" value="{{ prefill.get('company_name', '') }}"></label>
+        <label>Country<select name="country">{% for c in country %}<option value="{{ c }}" {{ 'selected' if prefill.get('country', 'IN') == c }}>{{ names[c] }}</option>{% endfor %}</select></label>
+        <label>Website (optional)<input name="website" value="{{ prefill.get('website', '') }}"></label>
+        <label>Email<input name="email" type="text" value="{{ prefill.get('email', '') }}"></label>
+        <label>Mobile number<input name="mobile" value="{{ prefill.get('mobile', '') }}"></label>
+        <label class="wide">Address<textarea name="address" rows="2">{{ prefill.get('address', '') }}</textarea></label>
+        <label>Tax ID (GSTIN for India, EIN for the US, VAT ID for Germany)<input name="tax_id" value="{{ prefill.get('tax_id', '') }}"></label>
+        <label>PAN (India only)<input name="pan" value="{{ prefill.get('pan', '') or '' }}"></label>
+        <label>Bank account holder name<input name="bank_account_name" value="{{ prefill.get('bank_account_name', '') }}"></label>
+        <label>Bank account number (IBAN for Germany)<input name="bank_account_number" value="{{ prefill.get('bank_account_number', '') }}"></label>
+        <label class="wide">Bank code (IFSC for India, routing number for the US, BIC for Germany)<input name="bank_code" value="{{ prefill.get('bank_code', '') }}"></label>
       </div>
       <h3>Documents</h3>
       <div class="fields">
-        {% for slot, text in doc_slots.items() %}<label>{{ text }}<input type="file" name="{{ slot }}"></label>{% endfor %}
+        {% for slot, text in doc_slots.items() %}<label>{{ text }}<input type="file" name="{{ slot }}">{% if correction and prefill.get('documents', {}).get(slot) %}<span class="muted">Keeping {{ prefill.documents[slot].filename }} unless replaced</span>{% endif %}</label>{% endfor %}
       </div>
       <button class="primary">Submit</button>
     </form>
 
-    <form id="tab-sample" class="tab" data-mode="sample" hidden>
+    {% if not correction %}<form id="tab-sample" class="tab" data-mode="sample" hidden>
       <label>Choose a sample
         <select name="sample">{% for value, label in samples %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
       </label>
       <label>...or upload your own JSON file<input type="file" name="json_file" accept=".json"></label>
       <button class="primary">Submit</button>
-    </form>
+    </form>{% endif %}
     <p class="error" id="error" hidden></p>
   </section>
 

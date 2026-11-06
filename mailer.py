@@ -13,10 +13,11 @@ from contextlib import closing
 from datetime import datetime
 
 import store
-from config import ALREADY_REGISTERED, NEEDS_REVIEW, VENDOR_DOCUMENTS, VENDOR_REASONS
+from config import ALREADY_REGISTERED, NEEDS_REVIEW, VENDOR_ACTION, VENDOR_DOCUMENTS, VENDOR_REASONS
 
 MAX_ATTEMPTS, LOOP_SECONDS = 3, 3
-HEADLINES = {("Approved", None): "Approved", ("Approved", ALREADY_REGISTERED): "Already registered", ("Pending", NEEDS_REVIEW): "Under review", ("Rejected", None): "Rejected"}
+HEADLINES = {("Approved", None): "Approved", ("Approved", ALREADY_REGISTERED): "Already registered", ("Pending", NEEDS_REVIEW): "Under review",
+             ("Pending", VENDOR_ACTION): "Information needed", ("Rejected", None): "Rejected"}
 STATUS = {"queued": "Queued", "failed": f"Failed after {MAX_ATTEMPTS} tries", "noaddr": "Not sent: no email address"}
 
 
@@ -37,7 +38,7 @@ def decision_mail(run, decision):
         return "Rejected", "Your application is rejected because " + "; ".join(reasons) + "."
     documents = unique(VENDOR_DOCUMENTS[c] for c in run["codes"] if c in VENDOR_DOCUMENTS) or ["documents that confirm your company's identity and bank details"]
     return "More information needed", ("We need these from you to validate your information and continue with your application:\n"
-                                       + "\n".join(f"{i}. {d}" for i, d in enumerate(documents, 1)) + "\nPlease send a new application with them on the Onboard vendor page.")
+                                       + "\n".join(f"{i}. {d}" for i, d in enumerate(documents, 1)) + "\nPlease open this application and choose Correct application.")
 
 
 # ---------------------------------------------------------------- the outbox
@@ -48,7 +49,7 @@ def get_run(run_id):
 
 def enqueue(conn, run, event, headline, body):
     """Idempotent: one message per (submission, event). One thread per application: Re: after its first mail."""
-    root = run["run_id"]
+    root = run.get("application_id") or run["run_id"]
     to = (run["payload"].get("email") or "").strip()
     subject = f"Your vendor application ({root})"
     if conn.execute("SELECT COUNT(*) FROM outbox WHERE thread_id=?", (root,)).fetchone()[0]:

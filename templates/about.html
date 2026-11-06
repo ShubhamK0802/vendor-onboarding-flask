@@ -1,88 +1,53 @@
 {% extends "base.html" %}
 {% block body %}
-<h1>About</h1>
+<h1>About the process</h1>
 <section class="card prose">
-  <h2>Countries</h2>
-  <p><b>Three countries today: India, the United States and Germany.</b> Any other country is never approved automatically: it goes to a reviewer.</p>
-  <ul>
-    <li><b>India:</b> GSTIN (with check character) and PAN, IFSC.</li>
-    <li><b>United States:</b> EIN, 9-digit routing number (with checksum).</li>
-    <li><b>Germany:</b> VAT ID (DE plus 9 digits, with check digit), IBAN (with mod-97 checksum and the 22-character length) and BIC. A German company banking abroad is allowed but goes to a reviewer. Umlauts match the way banks spell them (Müller = Mueller).</li>
-  </ul>
-  <p>More countries are a rule-table change, not a rewrite: each identifier format is one row in the <code>FORMATS</code> table in <code>checks.py</code>, and the IBAN rule is shared by every IBAN country, so the UK, France or Italy would mostly be new VAT-number rows.
-     We deliberately did not try all ten of the biggest countries: every country that is added without being tested properly is a place where the process could wrongly approve someone.
-     Names that are not in Latin letters (for example Japanese or Chinese) are never compared by spelling: they go to a reviewer.</p>
-
-  <h2>Who uses this</h2>
-  <ul>
-    <li><b>Vendors</b> fill in the form and upload documents. They see only the status and what they need to fix.</li>
-    <li><b>Reviewers</b> use the Reviewer desk: a queue that can be sorted by age and searched, with the evidence and documents, a way to take a submission so nobody else works on it, and Approve / Reject / Request more info with a required reason. After each decision the next submission opens.</li>
-  </ul>
-
-  <h2>What each status means</h2>
+  <h2>What the statuses mean</h2>
   <table>
-    <thead><tr><th>Status</th><th>The test</th><th>What happens next</th></tr></thead>
+    <thead><tr><th>Status</th><th>Meaning</th><th>Next owner</th></tr></thead>
     <tbody>
-      <tr><td><b>Approved</b></td><td>Every rule positively checked out. Also: an exact repeat of an already-onboarded vendor (nothing new) is Approved as <i>already registered</i>.</td><td>The vendor can be paid. A repeat creates nothing new, and the vendor is told it is already registered.</td></tr>
-      <tr><td><b>Pending: Needs review</b></td><td>The answer depends on something only our staff have: our records, a call to a number already on file, or judgment. Retyping would not settle it.</td><td>A reviewer decides. The vendor is told it is under review.</td></tr>
-      <tr><td><b>Rejected</b></td><td>This application cannot be approved as submitted: a rule rejects it, or it only has mistakes or gaps the vendor can correct. The application is closed.</td><td>The vendor is told why (for mistakes and gaps, exactly what to correct) and files a new application.</td></tr>
+      <tr><td><b>Approved</b></td><td>All applicable checks passed. An exact repeat is marked <i>Already registered</i> and creates nothing new.</td><td>Complete</td></tr>
+      <tr><td><b>Pending: Vendor action required</b></td><td>A correctable gap or one likely mistake. The numbered message says exactly what is needed.</td><td>The vendor corrects this application</td></tr>
+      <tr><td><b>Pending: Needs review</b></td><td>The evidence is inconclusive or depends on an internal record or independent verification.</td><td>A reviewer takes and decides the case</td></tr>
+      <tr><td><b>Rejected</b></td><td>A hard-stop rule, two identity contradictions, or a reviewer rejection.</td><td>Terminal</td></tr>
     </tbody>
   </table>
-  <p><b>When is a submission rejected?</b></p>
+
+  <h2>One application through its full lifecycle</h2>
+  <p>A correctable application stays open. <b>Correct application</b> opens a prefilled form and keeps existing documents unless the vendor replaces them. Submitting creates a new revision under the same application ID and reruns every check. Old revisions remain in the audit trail; they do not count as suspicious repeat attempts.</p>
+  <p>If a reviewer requests information, the same correction path is used. The vendor sees a safe evidence list, never the reviewer's internal note.</p>
+
+  <h2>The checks</h2>
+  <p>The process checks completeness, country rules, identifier formats and checksums, document presence/type signature, cross-field identity, legal-name match, demo verification data, duplicates and—with staff visibility only—fresh attempts after terminal rejection.</p>
   <ul>
-    <li><b>Two or more contradictions at once</b> (for example GSTIN and PAN disagree and the PAN type does not fit): a typo does not explain that. One contradiction alone is a mistake the vendor can fix.</li>
-    <li><b>The name is on the sanctions watchlist</b> (an exact match). A name that is only close goes to a reviewer, because false matches are common.</li>
-    <li><b>The bank is in an embargoed country</b> (Iran, North Korea, Syria, Cuba).</li>
-    <li><b>The tax registration is cancelled</b> in the registry.</li>
-    <li><b>The tax ID is a placeholder</b> such as 12-3456789 or all the same digit.</li>
-    <li><b>Look-alike tricks:</b> a letter O for a 0 or an I or l for a 1 in an ID or account number, hidden characters, letters of another alphabet mixed into a word, or two names that differ only in look-alike characters (g00gle and google). These are rejected outright, not sent back. Honest digits in a name (34square, add360) are fine: names are only compared with each other.</li>
-    <li><b>Only mistakes or gaps the vendor can correct</b> (a missing field, a wrong format, a missing document): the message lists exactly what to correct.</li>
-    <li><b>A reviewer rejects it, or asks for more information.</b></li>
+    <li><b>India:</b> GSTIN, company PAN and IFSC.</li>
+    <li><b>United States:</b> EIN and routing checksum.</li>
+    <li><b>Germany:</b> VAT check digit, IBAN checksum/length and BIC. VIES is optional.</li>
+    <li><b>Other countries:</b> never auto-approved; they go to review.</li>
   </ul>
-  <p>Anything the system cannot positively verify is never approved automatically.</p>
+  <p>Look-alike substitutions, hidden characters, mixed alphabets, exact sanctions matches, embargoed bank countries, cancelled registration and placeholder tax IDs are terminal hard stops. A single ordinary identity contradiction stays open for correction; two together reject.</p>
 
-  <h2>How the checks are sorted</h2>
-  <p>Up to nine checks run in order: completeness, country routing, format checks, documents, identity checks, name match, verification (registry, sanctions, embargo, placeholder IDs), duplicate check, and repeat attempts (shown only when the same applicant has applied before). Each finding is one of three kinds:</p>
+  <h2>Payment-fraud controls</h2>
   <ul>
-    <li><b>Vendor can fix</b>: a missing field or document, a typo in a format, a name that nearly matches the bank account holder, a legal form that differs (LLP vs Private Limited).</li>
-    <li><b>Needs review</b>: a bank account already used by another vendor, a possible sanctions-list match, an onboarded vendor whose bank account or details changed, a company ID under a different name, a shared phone or email, a foreign bank account, an unsupported country, names in a non-Latin script.</li>
-    <li><b>Contradiction</b>: the tax ID belongs to another country, GSTIN and PAN disagree, the PAN is not a company PAN, or the bank account is in a completely different company's name. One alone is fixable; two at once reject.</li>
-  </ul>
-  <p>If the vendor is asked to use an account in the company's own name and sends the same account again, a person reads their explanation (for example a signed letter of authorisation).</p>
-
-  <h2>What verification uses</h2>
-  <p>The registry and the watchlist are <b>demo data</b> written by <code>samples.py</code> (<code>registry.json</code>, <code>sanctions.json</code>); the names on the watchlist are fictional. They show where real services plug in: the tax authorities and the official OFAC, EU and UN lists.
-     A tax ID the demo registry does not know is not checked, and the stage says so. For German VAT IDs the real EU VIES check can be switched on with <code>VIES_LIVE=1</code>; it is off by default because the sample VAT IDs are not real registrations.
-     Whether the bank account really belongs to the vendor is not checked: that needs a bank's account-holder name service.</p>
-
-  <h2>What happens after the verdict</h2>
-  <ul>
-    <li>A reviewer's decision becomes the vendor's current status; the rules' original verdict is kept next to it.</li>
-    <li><i>Request more info</i> closes the application as rejected: the vendor is told what to send and files a new application.</li>
-    <li><b>Same company ID, different details</b> (name, bank account, phone, address): a reviewer sees what is the same and what differs. <b>Same name and something else in common</b> (address, phone, email or bank account) but a <b>different company ID</b>: also a reviewer, who sees the same comparison. The same name alone is not enough.</li>
-    <li><b>Vendor IDs</b> are internal: the vendor never sees one.</li>
-    <li><b>Repeat attempts</b> are counted across earlier <i>rejected</i> applications (same company ID, bank account, phone, email, near-identical name, or the same uploaded file, within 30 days). From the 4th attempt, or when the bank account, tax ID, PAN or company name changes without being asked, a person decides, even if the new form is perfect. Too many submissions from one network in an hour are refused. If the applicant changes every detail, nothing links the attempts: real registry and bank checks are the answer in production.</li>
-    <li>There is no resubmission. A vendor who is sent back files a <b>new application</b>, and it is checked from scratch: nothing is pre-filled or carried over. There are no timers and no reminder mails: nothing is waiting on the vendor.</li>
-    <li>Every update goes to the vendor <b>automatically</b>, in one email thread per application. Messages are saved in an outbox and sent by a background worker; the <b>Messages</b> page shows each one with its status. First the verdict, for example "your application is under review, we will reach back to you if anything is needed"; then the reviewer's outcome in the same thread: approved, rejected with the reason, or the list of documents we need. The reasons and document lists are worked out from what the checks found, so the reviewer types nothing, and nothing about other vendors is revealed.</li>
-    <li>Approved vendors join the list the duplicate check compares against. An already-onboarded company that applies again with nothing new is rejected as a duplicate; if its bank account, contact details or address changed, a reviewer verifies the change (a bank change by calling the number already on file).</li>
+    <li>An onboarded vendor changing its bank account goes to review.</li>
+    <li>A bank account shared with another vendor goes to review.</li>
+    <li>The server blocks approval of either case until the reviewer records a trusted-contact callback or independent bank confirmation.</li>
+    <li>Bank account numbers are masked in every staff and vendor view.</li>
+    <li>From the fourth linked fresh application after terminal rejections, a reviewer decides even if the latest form is clean.</li>
   </ul>
 
-  <h2>Design choices</h2>
-  <ul>
-    <li><b>Fixed rules decide, not an AI.</b> Every outcome can be explained line by line and repeated exactly.</li>
-    <li><b>Thresholds are our own design</b> (a bank account holder name at least 80% similar to the company name, but not identical, counts as a near miss), kept in one config file. Rule version {{ rule_version }}.</li>
-    <li><b>Nothing is overwritten.</b> Reviewer decisions are separate records next to the original verdict.</li>
-    <li><b>Bank account numbers are masked</b> everywhere they are shown.</li>
-    <li>The history starts empty. Only the vendors already on file (for the duplicate check) exist before the first submission.</li>
-  </ul>
+  <h2>Reviewer controls and communication</h2>
+  <p>A reviewer must take a case before deciding it; only the holder can decide or release it. Every decision needs a reason. Evidence shows which fields caused the finding and, for existing-vendor cases, what is the same and what differs.</p>
+  <p>Vendor messages are generated from safe reason and document mappings. Reviewer text, other-vendor data, internal vendor IDs, attempt controls and screening mechanics never appear on the vendor page or in mail. Messages are saved to an outbox, retried, and grouped in one thread per application.</p>
 
-  <h2>Known limits</h2>
+  <h2>Honest demo boundaries</h2>
   <ul>
-    <li>Registry and sanctions checks use demo data, and bank-account ownership is not checked. The embargo list is simplified.</li>
-    <li>Documents are stored for the reviewer to open, but their contents are not read. A forged document of the right type would pass.</li>
-    <li>India, US and Germany only, one bank account per submission. No document expiry tracking.</li>
-    <li>Mail goes through a simulated mail service: nothing leaves the app, because the demo vendor addresses are fake. A real provider (Brevo) can be switched on for an allowed list of addresses. On free hosting the app sleeps when idle, so reminders go out when it wakes up.</li>
-    <li>Data lives in a SQLite file; on free hosting it can reset on restart.</li>
+    <li>The tax registry and sanctions list are demo fixtures. An unknown registry ID is labelled <i>not checked</i>, not verified or rejected.</li>
+    <li>PDF/PNG/JPG signatures are checked, but document content, authenticity, malware and expiry are not.</li>
+    <li>Automatic bank-account ownership verification is unavailable.</li>
+    <li>This case-study app has no staff login, roles or CSRF protection. SQLite and in-memory progress are single-instance choices.</li>
+    <li>Mail is simulated unless Brevo is configured, and real recipients must be on an allow-list.</li>
   </ul>
+  <p>Rules are deterministic and versioned (current version {{ rule_version }}); no AI makes an approval decision.</p>
 </section>
 {% endblock %}

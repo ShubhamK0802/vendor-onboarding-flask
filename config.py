@@ -1,4 +1,4 @@
-RULE_VERSION = "6.0"
+RULE_VERSION = "7.0"
 
 REQUIRED_FIELDS = [
     "company_name", "country", "email", "mobile",
@@ -141,7 +141,9 @@ EVIDENCE_FIELDS = {
 # Finding severity: FIX = vendor can fix it, REVIEW = needs human judgment, RED = identity red flag
 FIX, REVIEW, RED = 1, 2, 3
 
-# The only reason a run is Pending: a person must decide (status name shown everywhere).
+# Pending always names who acts next. A correctable application stays open for the
+# vendor; an inconclusive or high-risk application goes to a reviewer.
+VENDOR_ACTION = "Vendor action required"
 NEEDS_REVIEW = "Needs review"
 # An exact repeat of an onboarded vendor is Approved, but nothing new is created: the vendor is simply told it is already registered.
 ALREADY_REGISTERED = "Already registered"
@@ -158,12 +160,9 @@ VENDORS_ON_FILE = [{
 }]
 
 # ---- When is a run Rejected? (the status definitions, in code)
-# Rejected = this application cannot be approved as submitted. The vendor is told why (and, for mistakes and gaps, exactly what to correct) and files a
-# NEW application: nothing is pending on the vendor's side, so there is no waiting state and no timer. It is reached by:
-#   1. a finding that rejects on its own (below), with the reason the VENDOR is told (never a fraud accusation);
-#   2. two or more identity contradictions at once, which a typo cannot explain;
-#   3. only mistakes or gaps the vendor can correct (the message lists them);
-#   4. a reviewer's decision (including asking for more information: the vendor then files a new application).
+# Rejected is terminal: a finding below rejects on its own, two or more identity
+# contradictions occur together, or a reviewer rejects it. Missing information,
+# ordinary format errors and a single likely typo stay Pending for vendor action.
 REJECT_ON_ITS_OWN = {
     "SANCTIONS_MATCH": "we are unable to onboard this company",  # deliberately vague: never tell a listed party what matched
     "EMBARGOED_BANK_COUNTRY": "we cannot make payments to a bank in that country",
@@ -177,8 +176,8 @@ REJECT_ON_ITS_OWN = {
 }
 # Countries under comprehensive sanctions (simplified: a real deployment uses the current official lists).
 EMBARGOED_COUNTRIES = {"KP", "IR", "SY", "CU"}
-# Repeat attempts: a vendor whose application is sent back files a NEW application. Applications are linked by a shared identifier, a near-identical
-# name or a re-used file. From the 4th linked attempt, or when an identity field changes that nobody asked to be changed, a person decides.
+# Repeat attempts concern fresh applications filed after a terminal rejection.
+# Normal corrections remain revisions of the same open application and do not count.
 ATTEMPTS_BEFORE_REVIEW = 3  # earlier linked attempts allowed before the next one goes to a reviewer
 ATTEMPT_WINDOW_DAYS = 30
 NAME_LINK_SCORE = 92  # company names this similar (0-100) count as the same applicant

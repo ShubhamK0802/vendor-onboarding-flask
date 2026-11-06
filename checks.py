@@ -217,8 +217,10 @@ def check_documents(submission):
             findings.append(make_finding("BAD_FILE_TYPE", FIX, f"{doc_label(slot)} must be a PDF, PNG or JPG"))
         if not doc.get("size_bytes"):
             findings.append(make_finding("EMPTY_FILE", FIX, f"{doc_label(slot)} file is empty: upload it again"))
+        if doc.get("signature_valid") is False:
+            findings.append(make_finding("MALFORMED_DOCUMENT", FIX, f"{doc_label(slot)} does not match its file type: upload the original PDF, PNG or JPG"))
         if doc.get("declared_type") != slot:
-            findings.append(make_finding("WRONG_SLOT", FIX, f"The file in the {doc_label(slot)} field is a different document: upload your {doc_label(slot).lower()} there"))
+            findings.append(make_finding("WRONG_SLOT", FIX, f"The document was declared as {doc_label(doc.get('declared_type')).lower()} but placed in the {doc_label(slot)} field"))
     return make_result("documents", findings)
 
 
@@ -442,8 +444,8 @@ def check_duplicates(submission, existing_vendors):
 
 
 # ---- 9. earlier attempts ------------------------------------------------------------------------
-# A vendor who is sent back files a new application. Nothing is inherited from the earlier one (no pre-filled form, no "fixed" shortcut);
-# the earlier attempts are only looked at to spot trial and error: the same applicant trying again and again, or changing who they are.
+# Corrections are revisions of one open application and are not attempts. This stage only links fresh applications filed after a terminal rejection,
+# to spot trial and error or an unexplained change of identity.
 
 IDENTITY_FIELDS = [("company_name", "company name"), ("tax_id", "tax ID"), ("pan", "PAN"), ("bank_account_number", "bank account")]
 
@@ -453,7 +455,7 @@ def uploaded_files(submission):
 
 
 def link_reasons(submission, earlier):
-    """Why an earlier application is probably the same applicant. Used to count attempts and to close an application the vendor has replaced."""
+    """Why an earlier terminally rejected application is probably the same applicant."""
     other, reasons = earlier["payload"], []
     key = company_key(submission)
     if key and key == company_key(other):

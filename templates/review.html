@@ -49,16 +49,25 @@
     </form>
     {% endif %}
 
-    <form method="post" action="{{ url_for('review_decision', run_id=picked.run_id) }}" class="needs-name">
+    {% if picked.claimed_by %}<form method="post" action="{{ url_for('review_decision', run_id=picked.run_id) }}" class="needs-name">
       <input type="hidden" name="reviewer">{% for k, v in args.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
       <label>Reason (required, it goes in the audit trail)<textarea name="note" rows="4" required></textarea></label>
+      {% if high_risk_bank_codes.intersection(picked.codes) %}
+      <label>Independent verification before approval
+        <select name="verification_method">
+          <option value="">Not completed</option>
+          {% for value, label in verification_methods.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <p class="muted">Approval is blocked until the bank change or shared account is confirmed outside the submitted contact channel. Reject and Request more info do not require this field.</p>
+      {% endif %}
       <div class="buttons">
         <button class="primary" name="decision" value="Approved">Approve</button>
         <button class="secondary" name="decision" value="Rejected">Reject</button>
         <button class="secondary" name="decision" value="Info requested">Request more info</button>
       </div>
-      <p class="muted">Request more info closes this application as rejected: the vendor is told what to send and files a new application. After you decide, the next submission in this order opens.</p>
-    </form>
+      <p class="muted">Request more info keeps this application open for the vendor. The vendor is told what to send and can correct the same application. After you decide, the next submission in this order opens.</p>
+    </form>{% else %}<p class="muted">Take this submission before making a decision.</p>{% endif %}
   </section>
 </div>
 {% endif %}

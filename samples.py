@@ -113,14 +113,14 @@ CASES = [
     ("01_approved_india_clean", INDIA, SEED, "Approved", None, None),
     ("02_approved_us_clean", american("Brightwave Supplies LLC", "84-2736195", "4400123987"), SEED, "Approved", None, None),
     ("03_approved_germany_umlaut_names", german("Müller Söhne GmbH", "27184635", "120300000000202051", "BYLADEM1001", holder="Mueller Soehne GmbH"), SEED, "Approved", None, None),
-    # ---------------- Rejected: only mistakes or gaps the vendor can correct (the message lists them; the vendor files a new application)
-    ("04_fix_us_ein_dropped_zero", american("Pioneer Packaging LLC", "42958371", "5100234567", mobile="3125550101"), SEED, "Rejected", None, None),
-    ("05_fix_wrong_document_in_slot", wrong_slot(), SEED, "Rejected", None, None),
-    ("06_fix_german_vat_typo", german("Rheinblick Maschinen GmbH", "47382915", "100000000123456789", "MARKDEF1100", swap=True), SEED, "Rejected", None, None),
-    ("07_fix_us_company_with_indian_gstin", edit(american("Redwood Supply LLC", "x", "4400555111", mobile="3105550188"), tax_id=gstin_for("RDWCS6789L", "29")), SEED, "Rejected", None, None),
-    ("08_fix_third_party_bank_account", indian("Greenfield Agro Private Limited", "GRECG4567M", "73000123456703", holder="Sharma & Associates Chartered Accountants"), SEED, "Rejected", None, None),
-    ("09_fix_near_miss_name", indian("Lumina Global Private Limited", "LUMCG5678N", "74000123456704", holder="Lumina Globe Private Limited"), SEED, "Rejected", None, None),
-    ("10_fix_trade_name_not_legal_name", indian("Sundara Silks", "SUNCT4567M", "75000123456705"), SEED, "Rejected", None, {"name": "Sundara Textiles Private Limited"}),
+    # ---------------- Pending: vendor action required (same application stays open for a correction)
+    ("04_fix_us_ein_dropped_zero", american("Pioneer Packaging LLC", "42958371", "5100234567", mobile="3125550101"), SEED, "Pending", "Vendor action required", None),
+    ("05_fix_wrong_document_in_slot", wrong_slot(), SEED, "Pending", "Vendor action required", None),
+    ("06_fix_german_vat_typo", german("Rheinblick Maschinen GmbH", "47382915", "100000000123456789", "MARKDEF1100", swap=True), SEED, "Pending", "Vendor action required", None),
+    ("07_fix_us_company_with_indian_gstin", edit(american("Redwood Supply LLC", "x", "4400555111", mobile="3105550188"), tax_id=gstin_for("RDWCS6789L", "29")), SEED, "Pending", "Vendor action required", None),
+    ("08_fix_third_party_bank_account", indian("Greenfield Agro Private Limited", "GRECG4567M", "73000123456703", holder="Sharma & Associates Chartered Accountants"), SEED, "Pending", "Vendor action required", None),
+    ("09_fix_near_miss_name", indian("Lumina Global Private Limited", "LUMCG5678N", "74000123456704", holder="Lumina Globe Private Limited"), SEED, "Pending", "Vendor action required", None),
+    ("10_fix_trade_name_not_legal_name", indian("Sundara Silks", "SUNCT4567M", "75000123456705"), SEED, "Pending", "Vendor action required", {"name": "Sundara Textiles Private Limited"}),
     # ---------------- Pending: Needs review (only our staff can settle it)
     ("11_review_existing_vendor_changes_bank_account", edit(INDIA, bank_account_number="60100987654321"), SEED + [APEX], "Pending", "Needs review", None),
     ("12_review_bank_account_shared_with_another_vendor", indian("Harbor Freight Private Limited", "HARCF6789P", ORION["bank_account_number"]), SEED, "Pending", "Needs review", None),
@@ -136,7 +136,7 @@ CASES = [
     ("22_reject_embargoed_bank_country", german("Hansa Bauteile GmbH", "58261937", "", "BKMTIRTHXXX", iban=make_iban("IR", "0120000000012345678901")), SEED, "Rejected", None, None),
     ("23_reject_cancelled_registration", indian("Orbit Exports Private Limited", "ORBCO5612S", "81000123456713"), SEED, "Rejected", None, {"status": "cancelled"}),
     ("24_reject_placeholder_tax_id", american("Summit Tools LLC", "12-3456789", "6600123987", mobile="4155550177"), SEED, "Rejected", None, None),
-    ("25_fix_incomplete_form_with_wrong_document", incomplete_form(), SEED, "Rejected", None, None),
+    ("25_fix_incomplete_form_with_wrong_document", incomplete_form(), SEED, "Pending", "Vendor action required", None),
     ("27_approved_form_demo_vendor", demo_form_vendor(), SEED, "Approved", None, None),
     # ---------------- the corrected versions of the edge-case samples (what the vendor sends after being told what is wrong)
     ("28_corrected_incomplete_form", indian("Delta Pumps Private Limited", "DELCP3456L", "72000123456702"), SEED, "Approved", None, None),
@@ -159,7 +159,7 @@ SAMPLES = [
     ("01_approved_india_clean", "01_approved_india_clean"),                                                 # the happy path
     ("02_edge_incomplete_form_wrong_document", "25_fix_incomplete_form_with_wrong_document"),               # "incomplete forms", "the wrong documents": a numbered list of what to send
     ("03_edge_tax_id_wrong_for_country", "07_fix_us_company_with_indian_gstin"),                            # "the tax ID format is wrong for the country they claim"
-    ("04_edge_name_nearly_matches_bank_account", "09_fix_near_miss_name"),                                  # "the name doesn't match the bank account": sent back; the vendor files a new application
+    ("04_edge_name_nearly_matches_bank_account", "09_fix_near_miss_name"),                                  # the vendor corrects the open application
     ("05_edge_identity_fields_contradict", "19_reject_two_contradictions"),                                 # "subtle inconsistencies when you cross-reference the fields": rejected
     ("06_edge_existing_vendor_changes_bank_account", "11_review_existing_vendor_changes_bank_account"),     # "payment fraud": a reviewer must verify it; submit 01 first
     ("07_edge_lookalike_characters_in_name", "26_reject_lookalike_name"),                                   # "Gl0bex" against "Globex": a zero for an o: rejected outright
@@ -170,7 +170,7 @@ SAMPLES = [
 
 # The corrected version of each edge case a vendor can fix, so you can see that sending the right data works.
 # 06 has none: an existing vendor changing its bank account can only be settled by a reviewer, whatever the vendor sends.
-# 07 is the exception to "approved": alone it is approved, but after 07 was rejected for look-alike characters the new application goes to a reviewer.
+# 07 is terminally rejected because look-alike characters are a serious signal; a later fresh application goes to a reviewer.
 CORRECTED = [
     ("02b_corrected_incomplete_form_completed", "28_corrected_incomplete_form"),
     ("03b_corrected_tax_id_for_country", "29_corrected_tax_id_for_country"),

@@ -1,73 +1,42 @@
-# Mind map
+# Vendor onboarding mind map
 
 ```mermaid
 mindmap
-  root((Vendor onboarding))
-    Intake
-      Form with PDFs
-      JSON file
-      9 samples + 5 corrected
-      New application after a rejection
-    Pipeline
-      1 Completeness
-      2 Country routing
-        India
-        US
-        Germany
-      3 Format checks
-        GSTIN PAN IFSC
-        EIN routing
-        VAT IBAN BIC
-      4 Documents
-        Tax
-        Registration
-        Bank proof
-      5 Identity checks
-      6 Name match
-      7 Verification
-        Registry
-        Sanctions
-        Embargo
-        Placeholder ID
-      8 Duplicates
-        Already registered
-        Same ID different details
-        Same name different ID
-      9 Repeat attempts
-        Staff only
-    Decision
+  root((Vendor application))
+    Submit
+      Form and documents
+      JSON
+      Demo samples
+    Validate
+      Completeness
+      Country and formats
+      Document signature
+      Identity and name
+      Registry and sanctions
+      Duplicates
+    Outcome
       Approved
         Already registered
       Pending
+        Vendor action required
+          Prefilled correction
+          Same application
+          Full recheck
         Needs review
+          Claim ownership
+          Evidence comparison
+          Independent bank verification
       Rejected
-        A rule rejects it
-        Two red flags
-        Only mistakes or gaps
-    Fraud defences
-      Look-alike characters
-      Hidden characters
-      Bank change
-      Shared contact
-      Duplicate account
-      Repeat attempts
+        Hard stop
+        Two contradictions
+        Reviewer rejection
+    Communicate
+      Safe vendor wording
+      One mail thread
+      Delivery audit
+    Protect
+      Mask bank account
+      Hide internal notes
+      Link fresh terminal attempts
       Rate limit
-    People
-      Vendor
-        Sees status and message
-        Never sees vendor ID
-      Reviewer
-        Take
-        Decide
-        Request info
-        Same and different notes
-    Mail
-      Outbox
-      Background sender
-      One thread
-    Evidence
-      Dashboard
-      CSV export
-      200+ tests
-      Demo kit
 ```

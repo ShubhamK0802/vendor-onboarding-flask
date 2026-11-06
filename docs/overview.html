@@ -1,132 +1,40 @@
-<!doctype html><meta charset="utf-8"><title>Vendor onboarding: workflow and mind map</title>
-<style>body{background:#fff;color:#111;font-family:Arial,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px}h2{margin-top:40px}</style>
-<h2>1. End to end</h2><pre class="mermaid">flowchart TD
-    A[Vendor submits form, JSON or sample] --> B[Pipeline: 8 stages + repeat attempts when relevant]
-    B --> C{Decision rule}
-    C -->|no findings| D[Approved]
-    C -->|exact repeat of an onboarded vendor| AR[Approved: Already registered]
-    C -->|needs a person to decide| F[Pending: Needs review]
-    C -->|a rule rejects it / 2 red flags| G[Rejected]
-    C -->|only mistakes or gaps the vendor can correct| G
-    G -->|vendor corrects and files a new application| A
-    F --> H[Reviewer takes the case]
-    H -->|approve| D
-    H -->|reject| G
-    H -->|request more info| G
-    D --> M[Mail to vendor]
-    AR --> M
-    F --> M
-    G --> M
-</pre><h2>2. The pipeline</h2><pre class="mermaid">flowchart LR
-    S1[1 Completeness] --> S2[2 Country routing] --> S3[3 Format checks] --> S4[4 Documents]
-    S4 --> S5[5 Identity checks] --> S6[6 Name match] --> S7[7 Verification] --> S8[8 Duplicate check]
-    S8 --> S9[9 Repeat attempts: staff only, when relevant] --> D[Decision]
-</pre><h2>3. An applicant who is already onboarded, and look-alikes of one</h2><pre class="mermaid">flowchart TD
-    A[New application] --> B{Company ID already onboarded?}
-    B -->|yes| C{What differs?}
-    C -->|nothing| D[Approved: Already registered, nothing created]
-    C -->|company name| E[Needs review: same ID, different name]
-    C -->|bank account| F[Needs review: bank change, verify by calling the number on file]
-    C -->|contact or address| G[Needs review: details changed]
-    B -->|no| H{Name 92 percent or more like an onboarded vendor?}
-    H -->|yes, and phone, email, address or bank account also match| I[Needs review: same name, different company ID]
-    H -->|no| J[Other checks continue: a shared bank account or contact still goes to review]
-</pre><h2>4. A new application after a rejection</h2><pre class="mermaid">sequenceDiagram
-    participant V as Vendor
-    participant S as System
-    participant R as Reviewer
-    V->>S: Application A
-    S-->>V: Rejected. We found these problems 1..n. Please correct and submit a new application (mail)
-    V->>S: New application B (nothing pre-filled, nothing carried over)
-    S->>S: Check B from scratch, then count earlier REJECTED attempts by the same applicant
-    alt clean, fewer than 4 attempts, no unasked identity change
-        S-->>V: Approved
-    else 4th attempt, identity changed without being asked, or an earlier serious rejection
-        S->>R: Needs review (attempts shown to staff)
-        S-->>V: Under review (never says why)
-    end
-</pre><h2>5. Reviewer desk</h2><pre class="mermaid">flowchart TD
-    Q[Queue: Needs review] --> T[Take: claimed by one reviewer]
-    T --> V[Read findings, same and different comparison, documents]
-    V --> X{Decide}
-    X -->|Approve| AP[Approved]
-    X -->|Reject| RJ[Rejected, reason built from the findings]
-    X -->|Request more info| RI[Rejected: vendor told what to send and files a new application]
-    V -->|Give back| Q
-</pre><h2>6. Mail</h2><pre class="mermaid">flowchart LR
-    E[Decision made] --> O[Outbox: queued]
-    O --> W[Background sender]
-    W -->|demo mode| SIM["Sent (simulated)"]
-    W -->|Brevo configured and allowlisted| BR["Sent (real)"]
-    W -->|error, retried 3 times| F[Failed]
-    O -->|no address| N[No address]
-</pre><h2>Mind map</h2><pre class="mermaid">mindmap
-  root((Vendor onboarding))
-    Intake
-      Form with PDFs
-      JSON file
-      9 samples + 5 corrected
-      New application after a rejection
-    Pipeline
-      1 Completeness
-      2 Country routing
-        India
-        US
-        Germany
-      3 Format checks
-        GSTIN PAN IFSC
-        EIN routing
-        VAT IBAN BIC
-      4 Documents
-        Tax
-        Registration
-        Bank proof
-      5 Identity checks
-      6 Name match
-      7 Verification
-        Registry
-        Sanctions
-        Embargo
-        Placeholder ID
-      8 Duplicates
-        Already registered
-        Same ID different details
-        Same name different ID
-      9 Repeat attempts
-        Staff only
-    Decision
-      Approved
-        Already registered
-      Pending
-        Needs review
-      Rejected
-        A rule rejects it
-        Two red flags
-        Only mistakes or gaps
-    Fraud defences
-      Look-alike characters
-      Hidden characters
-      Bank change
-      Shared contact
-      Duplicate account
-      Repeat attempts
-      Rate limit
-    People
-      Vendor
-        Sees status and message
-        Never sees vendor ID
-      Reviewer
-        Take
-        Decide
-        Request info
-        Same and different notes
-    Mail
-      Outbox
-      Background sender
-      One thread
-    Evidence
-      Dashboard
-      CSV export
-      200+ tests
-      Demo kit
-</pre><script type="module">import m from "https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs";m.initialize({startOnLoad:true});</script>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vendor onboarding workflow</title>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({startOnLoad:true,theme:'neutral'});</script>
+<style>body{font:16px system-ui;max-width:1000px;margin:40px auto;padding:0 20px;color:#182230}h1,h2{color:#0b3b60}.mermaid{background:#fff;border:1px solid #d9e2ea;border-radius:12px;padding:18px;margin-bottom:32px}</style></head><body>
+<h1>Vendor onboarding: canonical workflow</h1>
+<p>Every state has a clear owner. Corrections are revisions of the same application; rejection is terminal.</p>
+<h2>Lifecycle</h2><pre class="mermaid">
+flowchart TD
+ A[Vendor submits] --> B[Run all checks]
+ B --> C{Evidence}
+ C -->|clear| AP[Approved]
+ C -->|correctable| VA[Pending: Vendor action required]
+ C -->|uncertain or high risk| NR[Pending: Needs review]
+ C -->|hard stop or 2 contradictions| RJ[Rejected]
+ VA --> F[Prefilled correction, same application]
+ F --> B
+ NR --> T[Reviewer takes case]
+ T --> D{Decide}
+ D -->|approve| AP
+ D -->|request info| VA
+ D -->|reject| RJ
+</pre>
+<h2>Payment-risk review</h2><pre class="mermaid">
+flowchart LR
+ Q[Bank change or shared account] --> T[Reviewer claims case]
+ T --> E[Review evidence and same/different comparison]
+ E --> I[Trusted-contact callback or independent bank confirmation]
+ I --> A[Approval unlocked and method audited]
+</pre>
+<h2>Correction loop</h2><pre class="mermaid">
+sequenceDiagram
+ participant V as Vendor
+ participant S as System
+ V->>S: Revision 1
+ S-->>V: Vendor action required + numbered list
+ V->>S: Correct prefilled application
+ S->>S: Save revision 2 and rerun every check
+ S-->>V: Current outcome
+</pre>
+</body></html>

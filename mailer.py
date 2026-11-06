@@ -62,6 +62,8 @@ def enqueue_verdict(run_id):
     run = get_run(run_id)
     with closing(store.connect()) as conn, conn:
         enqueue(conn, run, "verdict", HEADLINES[(run["status"], run["sub_status"])], run["decision"]["vendor_message"])
+    if os.environ.get("VERCEL"):
+        deliver_queued()  # serverless functions cannot rely on a background thread after the response
 
 
 def enqueue_decision(run_id, decision_id):
@@ -69,6 +71,8 @@ def enqueue_decision(run_id, decision_id):
     headline, body = decision_mail(run, decision)
     with closing(store.connect()) as conn, conn:
         enqueue(conn, run, f"decision:{decision_id}", headline, body)
+    if os.environ.get("VERCEL"):
+        deliver_queued()
 
 
 # ---------------------------------------------------------------- sending

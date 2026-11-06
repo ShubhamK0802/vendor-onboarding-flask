@@ -188,14 +188,15 @@ def worker(token, submission, files, parent_id=None):
     try:
         history = store.load_runs()
         known, stages, started = store.known_vendors(history), [], time.perf_counter()
+        pause = 0 if os.environ.get("VERCEL") else STAGE_PAUSE
         for stage in iter_stages(submission, known, history):
             stages.append(stage)
             if stage["stage"] == "repeat_attempts":  # an internal control for staff: recorded, but never shown to the vendor
                 continue
             progress["stages"].append({"name": stage["stage"].replace("_", " "), "status": stage["status"],
                                        "detail": stage.get("note") or (f"{len(stage['findings'])} found" if stage["findings"] else "")})
-            time.sleep(STAGE_PAUSE)
-        seconds = max(time.perf_counter() - started - STAGE_PAUSE * len(stages), 0)
+            time.sleep(pause)
+        seconds = max(time.perf_counter() - started - pause * len(stages), 0)
         # The same applicant keeps one vendor ID across attempts, even when the tax ID was the thing that was wrong or the earlier attempt was rejected.
         # Only strong links count here (a shared name or file is a hint for the reviewer, not proof of identity).
         same_as = parent_id or next((r["run_id"] for r in reversed(history) if {"company ID", "bank account", "phone", "email"} & set(link_reasons(submission, r))), None)
@@ -243,6 +244,11 @@ def api_submit():
         PROGRESS.pop(next(iter(PROGRESS)))
     PROGRESS[token] = {"stages": [], "done": False, "run_id": None, "error": None}
     parent_id = (revision["application_id"] if revision else None)
+    if os.environ.get("VERCEL"):
+        worker(token, submission, files, parent_id)
+        progress = PROGRESS[token]
+        result_html = render_template("_run.html", run=get_run(progress["run_id"]), vendor_view=True) if progress["run_id"] else ""
+        return jsonify(token=token, progress=progress, result_html=result_html)
     threading.Thread(target=worker, args=(token, submission, files, parent_id), daemon=True).start()
     return jsonify(token=token)
 
@@ -409,7 +415,7 @@ def reset():
 def start_mail_worker():
     """Started on the first request, not at import: if the host forks the app after import, a thread started earlier is gone in the child while the
     lock it held stays locked for ever (the app then hangs). The tests switch the worker off and drive the sender by hand."""
-    if os.environ.get("MAIL_WORKER", "1") == "1":
+    if not os.environ.get("VERCEL") and os.environ.get("MAIL_WORKER", "1") == "1":
         mailer.start_background()  # does nothing after the first call
 
 

@@ -27,17 +27,19 @@ if ($('#stages')) {
     $('#placeholder').hidden = true;
     $('#outcome').innerHTML = '';
     $('#result-title').textContent = 'Verifying vendor…';
+    let progress = started.progress || null;
     for (;;) {
-      const progress = await (await fetch(`/api/progress/${started.token}`)).json();
+      if (!progress) progress = await (await fetch(`/api/progress/${started.token}`)).json();
       show(progress.stages);
       if (progress.done) {
         if (progress.error) { $('#outcome').textContent = progress.error; $('#result-title').textContent = 'Verification progress'; }
         else {
-          $('#outcome').innerHTML = await (await fetch(`/run/${progress.run_id}`)).text();
+          $('#outcome').innerHTML = started.result_html || await (await fetch(`/run/${progress.run_id}`)).text();
           $('#result-title').textContent = 'Result';
         }
         break;
       }
+      progress = null;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     buttons.forEach((b) => (b.disabled = false));

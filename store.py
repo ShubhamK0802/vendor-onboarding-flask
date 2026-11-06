@@ -10,7 +10,7 @@ from datetime import datetime
 from checks import company_key
 from config import ALREADY_REGISTERED, VENDOR_ACTION, VENDORS_ON_FILE
 
-DB_PATH = os.environ.get("DB_PATH", "onboarding.db")  # the free host sets :memory: (see render.yaml): its file locking is unreliable and its disk is wiped on restart anyway
+DB_PATH = os.environ.get("DB_PATH") or ("/tmp/onboarding.db" if os.environ.get("VERCEL") else "onboarding.db")
 SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "country", "bank_code", "mobile", "email"]
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, country TEXT, status TEXT, sub_status TEXT,

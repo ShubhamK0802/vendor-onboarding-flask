@@ -284,6 +284,16 @@ check(b"Form Vendor LLC" in client.get("/dashboard").data and b"Sorted without a
 client.post("/reset")
 check(b"No submissions yet" in client.get("/dashboard").data, "web: reset empties the dashboard again")
 
+# Vercel cannot keep working in a background thread after returning a response. It completes the same pipeline synchronously and returns the result HTML.
+os.environ["VERCEL"] = "1"
+serverless = client.post("/api/submit", data={"mode": "sample", "sample": "01_approved_india_clean.json"}).get_json()
+check(serverless["progress"]["done"] and serverless["progress"]["run_id"] and "Approved" in serverless["result_html"],
+      "Vercel: a submission completes in one request and returns its rendered result")
+check(store.query("SELECT status, transport FROM outbox") == [{"status": "sent", "transport": "simulated"}],
+      "Vercel: the outbox is delivered synchronously instead of relying on a background thread")
+os.environ.pop("VERCEL")
+client.post("/reset")
+
 # a near-miss name: the application stays open with a clear correction path
 first = run_case("09_fix_near_miss_name")["run_id"]
 check(run(first)["final"] == "Pending" and run(first)["waiting_on"] == "Vendor" and b"match your company name exactly" in client.get(f"/run/{first}").data

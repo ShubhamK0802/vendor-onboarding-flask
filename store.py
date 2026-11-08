@@ -98,7 +98,12 @@ class Handle:
         return _shared["conn"].execute(compatible_sql(sql), args)
 
     def executemany(self, sql, args):
-        return _shared["conn"].executemany(compatible_sql(sql), args)
+        statement = compatible_sql(sql)
+        if _shared["postgres"]:
+            with _shared["conn"].cursor() as cursor:
+                cursor.executemany(statement, args)
+            return None
+        return _shared["conn"].executemany(statement, args)
 
     def __enter__(self):
         _shared["conn"].__enter__()

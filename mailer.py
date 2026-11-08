@@ -52,7 +52,9 @@ def enqueue(conn, run, event, headline, body):
     root = run.get("application_id") or run["run_id"]
     to = (run["payload"].get("email") or "").strip()
     subject = f"Your vendor application ({root})"
-    if conn.execute("SELECT COUNT(*) FROM outbox WHERE thread_id=?", (root,)).fetchone()[0]:
+    row = conn.execute("SELECT COUNT(*) AS n FROM outbox WHERE thread_id=?", (root,)).fetchone()
+    message_count = row["n"] if store.using_postgres() else row[0]
+    if message_count:
         subject = "Re: " + subject
     conn.execute("INSERT OR IGNORE INTO outbox(thread_id, run_id, event, recipient, subject, body, headline, created, status, attempts) VALUES (?,?,?,?,?,?,?,?,?,0)",
                  (root, run["run_id"], event, to, subject, body, headline, now(), "queued" if to else "noaddr"))

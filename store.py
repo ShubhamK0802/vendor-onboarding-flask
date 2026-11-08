@@ -1,7 +1,11 @@
-"""All persistence in one SQLite file (stdlib). Raw submissions stay in the DB; everything shown in the UI is masked."""
+"""Application persistence: PostgreSQL in production, with a local SQLite fallback.
+
+Raw submissions stay in the database; everything shown in the UI is masked.
+"""
 import os
 import uuid
 import json
+import re
 import sqlite3
 import threading
 from contextlib import closing
@@ -10,9 +14,10 @@ from datetime import datetime
 from checks import company_key
 from config import ALREADY_REGISTERED, VENDOR_ACTION, VENDORS_ON_FILE
 
-DB_PATH = os.environ.get("DB_PATH") or ("/tmp/onboarding.db" if os.environ.get("VERCEL") else "onboarding.db")
+DB_PATH = os.environ.get("DB_PATH") or "onboarding.db"
+POSTGRES_URL = os.environ.get("POSTGRES_URL")
 SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "country", "bank_code", "mobile", "email"]
-SCHEMA = """
+SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, country TEXT, status TEXT, sub_status TEXT,
     rule_version TEXT, seconds REAL, decision TEXT, payload TEXT, snapshot TEXT, parent_id TEXT);
 CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY, run_id TEXT, decision TEXT, note TEXT, reviewer TEXT, ts TEXT);
@@ -22,7 +27,20 @@ CREATE TABLE IF NOT EXISTS run_vendor(run_id TEXT PRIMARY KEY, vendor_id TEXT);
 CREATE TABLE IF NOT EXISTS outbox(id INTEGER PRIMARY KEY, thread_id TEXT, run_id TEXT, event TEXT, recipient TEXT, subject TEXT, body TEXT, headline TEXT,
     created TEXT, status TEXT, sent_at TEXT, attempts INTEGER, error TEXT, transport TEXT, provider_id TEXT, UNIQUE(run_id, event));
 CREATE TABLE IF NOT EXISTS claims(run_id TEXT PRIMARY KEY, reviewer TEXT, ts TEXT);
-CREATE TABLE IF NOT EXISTS vendors(company_key TEXT, company_name TEXT, bank_account_number TEXT, mobile TEXT, email TEXT, address TEXT);
+CREATE TABLE IF NOT EXISTS vendors(company_key TEXT PRIMARY KEY, company_name TEXT, bank_account_number TEXT, mobile TEXT, email TEXT, address TEXT);
+"""
+
+POSTGRES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, seq BIGSERIAL UNIQUE, ts TEXT, company TEXT, country TEXT, status TEXT, sub_status TEXT,
+    rule_version TEXT, seconds DOUBLE PRECISION, decision TEXT, payload TEXT, snapshot TEXT, parent_id TEXT);
+CREATE TABLE IF NOT EXISTS decisions(id BIGSERIAL PRIMARY KEY, run_id TEXT, decision TEXT, note TEXT, reviewer TEXT, ts TEXT);
+CREATE TABLE IF NOT EXISTS docs(run_id TEXT, slot TEXT, filename TEXT, data BYTEA);
+CREATE TABLE IF NOT EXISTS vendor_ids(company_key TEXT PRIMARY KEY, vendor_id TEXT);
+CREATE TABLE IF NOT EXISTS run_vendor(run_id TEXT PRIMARY KEY, vendor_id TEXT);
+CREATE TABLE IF NOT EXISTS outbox(id BIGSERIAL PRIMARY KEY, thread_id TEXT, run_id TEXT, event TEXT, recipient TEXT, subject TEXT, body TEXT, headline TEXT,
+    created TEXT, status TEXT, sent_at TEXT, attempts INTEGER, error TEXT, transport TEXT, provider_id TEXT, UNIQUE(run_id, event));
+CREATE TABLE IF NOT EXISTS claims(run_id TEXT PRIMARY KEY, reviewer TEXT, ts TEXT);
+CREATE TABLE IF NOT EXISTS vendors(company_key TEXT PRIMARY KEY, company_name TEXT, bank_account_number TEXT, mobile TEXT, email TEXT, address TEXT);
 """
 
 
@@ -31,15 +49,43 @@ def new_vendor_id(country):
     return "V" + (country if isinstance(country, str) and len(country) == 2 and country.isalpha() and country.isupper() else "XX") + uuid.uuid4().hex[:6].upper()
 
 
-_lock, _shared = threading.RLock(), {"path": None, "conn": None}
+_lock, _shared = threading.RLock(), {"target": None, "conn": None, "postgres": False}
+
+
+def using_postgres():
+    return bool(POSTGRES_URL)
+
+
+def compatible_sql(sql):
+    """Translate the small SQLite-flavoured query subset used by this demo to PostgreSQL."""
+    if not using_postgres():
+        return sql
+    statement = sql.strip()
+    if statement.upper().startswith("INSERT OR REPLACE INTO CLAIMS VALUES"):
+        statement = ("INSERT INTO claims(run_id, reviewer, ts) VALUES (?,?,?) "
+                     "ON CONFLICT (run_id) DO UPDATE SET reviewer=EXCLUDED.reviewer, ts=EXCLUDED.ts")
+    elif statement.upper().startswith("INSERT OR IGNORE"):
+        statement = re.sub(r"^INSERT\s+OR\s+IGNORE", "INSERT", statement, count=1, flags=re.I)
+        statement += " ON CONFLICT DO NOTHING"
+    statement = statement.replace("ORDER BY ts, rowid", "ORDER BY ts, seq")
+    return statement.replace("?", "%s")
 
 
 class Handle:
-    """What connect() returns: the one shared connection, held by the calling thread until close(). The app is a single process, so all
-    database access is serialised here and threads never fight over SQLite's file lock (which failed with 'database is locked' on the host)."""
+    """A shared connection held by the calling thread until close().
+
+    Serialising access also keeps the SQLite fallback safe when the local app and
+    its background mail worker use the database at the same time.
+    """
 
     def __getattr__(self, name):
         return getattr(_shared["conn"], name)
+
+    def execute(self, sql, args=()):
+        return _shared["conn"].execute(compatible_sql(sql), args)
+
+    def executemany(self, sql, args):
+        return _shared["conn"].executemany(compatible_sql(sql), args)
 
     def __enter__(self):
         _shared["conn"].__enter__()
@@ -55,17 +101,30 @@ class Handle:
 def connect():
     _lock.acquire()
     try:
-        if _shared["path"] != DB_PATH:
+        target = POSTGRES_URL or DB_PATH
+        stale = _shared["postgres"] and _shared["conn"] is not None and _shared["conn"].closed
+        if _shared["target"] != target or stale:
             if _shared["conn"]:
                 _shared["conn"].close()
-            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            conn.executescript(SCHEMA)
-            _shared.update(path=DB_PATH, conn=conn)
+            if using_postgres():
+                import psycopg
+                from psycopg.rows import dict_row
+                conn = psycopg.connect(POSTGRES_URL, row_factory=dict_row, prepare_threshold=None)
+                for statement in POSTGRES_SCHEMA.split(";"):
+                    if statement.strip():
+                        conn.execute(statement)
+                conn.commit()
+            else:
+                conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+                conn.row_factory = sqlite3.Row
+                conn.executescript(SQLITE_SCHEMA)
+            _shared.update(target=target, conn=conn, postgres=using_postgres())
         conn = _shared["conn"]
         if not conn.execute("SELECT 1 FROM vendors").fetchone():  # an empty master is re-filled with the vendors that were already on file
-            conn.executemany("INSERT INTO vendors VALUES (:company_key, :company_name, :bank_account_number, :mobile, :email, :address)", VENDORS_ON_FILE)
-            conn.executemany("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", [(v["company_key"], new_vendor_id(v["country"])) for v in VENDORS_ON_FILE])
+            values = [(v["company_key"], v["company_name"], v["bank_account_number"], v["mobile"], v["email"], v["address"])
+                      for v in VENDORS_ON_FILE]
+            Handle().executemany("INSERT OR IGNORE INTO vendors VALUES (?,?,?,?,?,?)", values)
+            Handle().executemany("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", [(v["company_key"], new_vendor_id(v["country"])) for v in VENDORS_ON_FILE])
             conn.commit()
         return Handle()
     except BaseException:
@@ -95,7 +154,8 @@ def save_run(submission, decision, seconds, files=None, same_as=None, parent_id=
     """files: {slot: (filename, bytes)} - the uploaded documents, kept so a reviewer can open them."""
     run_id, key = uuid.uuid4().hex[:8], company_key(submission)  # random, so nobody can guess another submission's ID
     with closing(connect()) as conn, conn:
-        conn.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
+        conn.execute("INSERT INTO runs(run_id, ts, company, country, status, sub_status, rule_version, seconds, decision, payload, snapshot, parent_id) "
+                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
             run_id, now(), submission.get("company_name"), submission.get("country"), decision["status"], decision["sub_status"],
             decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
         conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
@@ -109,14 +169,27 @@ def save_run(submission, decision, seconds, files=None, same_as=None, parent_id=
 def vendor_for(conn, submission, key, same_as):
     """Every applicant gets a vendor ID on its first submission. A company already known by its tax identity keeps its ID, and so does a new
     application by the same applicant (even if the tax ID was the typo, or the earlier one was rejected); otherwise a new ID."""
-    known = key and conn.execute("SELECT vendor_id FROM vendor_ids WHERE company_key=?", (key,)).fetchone()
     earlier = same_as and conn.execute("SELECT vendor_id FROM run_vendor WHERE run_id=?", (same_as,)).fetchone()
-    return (known or earlier or {"vendor_id": new_vendor_id(submission.get("country"))})["vendor_id"]
+    candidate = (earlier or {"vendor_id": new_vendor_id(submission.get("country"))})["vendor_id"]
+    if key and using_postgres():
+        # One canonical vendor ID wins even when two serverless instances receive
+        # the first submission for the same company at exactly the same time.
+        inserted = conn.execute(
+            "INSERT INTO vendor_ids(company_key, vendor_id) VALUES (?,?) ON CONFLICT (company_key) DO NOTHING RETURNING vendor_id",
+            (key, candidate),
+        ).fetchone()
+        return (inserted or conn.execute("SELECT vendor_id FROM vendor_ids WHERE company_key=?", (key,)).fetchone())["vendor_id"]
+    known = key and conn.execute("SELECT vendor_id FROM vendor_ids WHERE company_key=?", (key,)).fetchone()
+    return (known or {"vendor_id": candidate})["vendor_id"]
 
 
 def save_decision(run_id, decision, note, reviewer):
     with closing(connect()) as conn, conn:
-        decision_id = conn.execute("INSERT INTO decisions(run_id, decision, note, reviewer, ts) VALUES (?,?,?,?,?)", (run_id, decision, note, reviewer, now())).lastrowid
+        sql = "INSERT INTO decisions(run_id, decision, note, reviewer, ts) VALUES (?,?,?,?,?)"
+        if using_postgres():
+            decision_id = conn.execute(sql + " RETURNING id", (run_id, decision, note, reviewer, now())).fetchone()["id"]
+        else:
+            decision_id = conn.execute(sql, (run_id, decision, note, reviewer, now())).lastrowid
         conn.execute("DELETE FROM claims WHERE run_id=?", (run_id,))  # a decided run is nobody's any more
     return decision_id
 
@@ -128,6 +201,13 @@ def claims():
 def claim(run_id, reviewer):
     """Take a run so two reviewers do not work on it at once. Returns who already holds it, or None when you now do."""
     with closing(connect()) as conn, conn:
+        if using_postgres():
+            acquired = conn.execute(
+                "INSERT INTO claims(run_id, reviewer, ts) VALUES (?,?,?) ON CONFLICT (run_id) DO NOTHING RETURNING reviewer",
+                (run_id, reviewer, now()),
+            ).fetchone()
+            if acquired:
+                return None
         row = conn.execute("SELECT reviewer FROM claims WHERE run_id=?", (run_id,)).fetchone()
         if row and row["reviewer"].lower() != reviewer.lower():
             return row["reviewer"]

@@ -10,6 +10,7 @@ import sqlite3
 import threading
 from contextlib import closing
 from datetime import datetime
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from checks import company_key
 from config import ALREADY_REGISTERED, VENDOR_ACTION, VENDORS_ON_FILE
@@ -54,6 +55,18 @@ _lock, _shared = threading.RLock(), {"target": None, "conn": None, "postgres": F
 
 def using_postgres():
     return bool(POSTGRES_URL)
+
+
+def psycopg_url(url):
+    """Remove provider metadata that libpq does not recognise.
+
+    Supabase's Vercel integration appends ``supa=...`` to identify its pooler.
+    The value is useful to provider tooling but is not a PostgreSQL connection
+    option, so psycopg correctly rejects it unless it is removed.
+    """
+    parts = urlsplit(url)
+    query = urlencode([(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key != "supa"])
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 
 
 def compatible_sql(sql):
@@ -109,7 +122,7 @@ def connect():
             if using_postgres():
                 import psycopg
                 from psycopg.rows import dict_row
-                conn = psycopg.connect(POSTGRES_URL, row_factory=dict_row, prepare_threshold=None)
+                conn = psycopg.connect(psycopg_url(POSTGRES_URL), row_factory=dict_row, prepare_threshold=None)
                 for statement in POSTGRES_SCHEMA.split(";"):
                     if statement.strip():
                         conn.execute(statement)

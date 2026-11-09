@@ -7,25 +7,24 @@
     <thead><tr><th>Status</th><th>Meaning</th><th>Next owner</th></tr></thead>
     <tbody>
       <tr><td><b>Approved</b></td><td>All applicable checks passed. An exact repeat is marked <i>Already registered</i> and creates nothing new.</td><td>Complete</td></tr>
-      <tr><td><b>Pending: Vendor action required</b></td><td>A correctable gap or one likely mistake. The numbered message says exactly what is needed.</td><td>The vendor corrects this application</td></tr>
       <tr><td><b>Pending: Needs review</b></td><td>The evidence is inconclusive or depends on an internal record or independent verification.</td><td>A reviewer takes and decides the case</td></tr>
-      <tr><td><b>Rejected</b></td><td>A hard-stop rule, two identity contradictions, or a reviewer rejection.</td><td>Terminal</td></tr>
+      <tr><td><b>Rejected</b></td><td>Wrong or missing input, a hard-stop rule, two identity contradictions, or a reviewer rejection. The message lists the reasons in plain words.</td><td>Closed. The vendor can file a new application</td></tr>
     </tbody>
   </table>
 
-  <h2>One application through its full lifecycle</h2>
-  <p>A correctable application stays open. <b>Correct application</b> opens a prefilled form and keeps existing documents unless the vendor replaces them. Submitting creates a new revision under the same application ID and reruns every check. Old revisions remain in the audit trail; they do not count as suspicious repeat attempts.</p>
-  <p>If a reviewer requests information, the same correction path is used. The vendor sees a safe evidence list, never the reviewer's internal note.</p>
+  <h2>Reject, then apply again</h2>
+  <p>An application is decided once. If anything is wrong or missing, it is <b>Rejected</b> and closed: nothing stays open and nothing is carried over. The vendor corrects the details and files a <b>new application</b>, and every check runs again from scratch. <b>Pending</b> means only one thing: a person must decide.</p>
+  <p>If a reviewer asks for more information, the application is closed as rejected and the vendor is told what to send in a new one. The vendor sees a safe evidence list, never the reviewer's internal note. Staff can see when several applications come from the same company; a fourth attempt in 30 days goes to a reviewer.</p>
 
   <h2>The checks</h2>
-  <p>The process checks completeness, country rules, identifier formats and checksums, document presence/type signature, cross-field identity, legal-name match, demo verification data, duplicates and—with staff visibility only—fresh attempts after terminal rejection.</p>
+  <p>The process checks completeness, country rules, identifier formats and checksums, document presence/type signature, cross-field identity, legal-name match, demo verification data, duplicates and—with staff visibility only—new applications after a rejection.</p>
   <ul>
     <li><b>India:</b> GSTIN, company PAN and IFSC.</li>
     <li><b>United States:</b> EIN and routing checksum.</li>
     <li><b>Germany:</b> VAT check digit, IBAN checksum/length and BIC. VIES is optional.</li>
     <li><b>Other countries:</b> never auto-approved; they go to review.</li>
   </ul>
-  <p>Look-alike substitutions, hidden characters, mixed alphabets, exact sanctions matches, embargoed bank countries, cancelled registration and placeholder tax IDs are terminal hard stops. A single ordinary identity contradiction stays open for correction; two together reject.</p>
+  <p>Look-alike substitutions, hidden characters, mixed alphabets, exact sanctions matches, embargoed bank countries, cancelled registration and placeholder tax IDs are hard stops that say nothing more than they must. Any other wrong or missing input is rejected too, with the problems listed.</p>
 
   <h2>Payment-fraud controls</h2>
   <ul>

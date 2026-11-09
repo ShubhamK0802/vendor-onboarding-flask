@@ -13,11 +13,11 @@ from contextlib import closing
 from datetime import datetime
 
 import store
-from config import ALREADY_REGISTERED, NEEDS_REVIEW, VENDOR_ACTION, VENDOR_DOCUMENTS, VENDOR_REASONS
+from config import ALREADY_REGISTERED, NEEDS_REVIEW, VENDOR_DOCUMENTS, VENDOR_REASONS
 
 MAX_ATTEMPTS, LOOP_SECONDS = 3, 3
 HEADLINES = {("Approved", None): "Approved", ("Approved", ALREADY_REGISTERED): "Already registered", ("Pending", NEEDS_REVIEW): "Under review",
-             ("Pending", VENDOR_ACTION): "Information needed", ("Rejected", None): "Rejected"}
+             ("Rejected", None): "Rejected"}
 STATUS = {"queued": "Queued", "failed": f"Failed after {MAX_ATTEMPTS} tries", "noaddr": "Not sent: no email address"}
 
 
@@ -37,8 +37,9 @@ def decision_mail(run, decision):
         reasons = unique(VENDOR_REASONS[c] for c in run["codes"] if c in VENDOR_REASONS) or ["we could not verify your information"]
         return "Rejected", "Your application is rejected because " + "; ".join(reasons) + "."
     documents = unique(VENDOR_DOCUMENTS[c] for c in run["codes"] if c in VENDOR_DOCUMENTS) or ["documents that confirm your company's identity and bank details"]
-    return "More information needed", ("We need these from you to validate your information and continue with your application:\n"
-                                       + "\n".join(f"{i}. {d}" for i, d in enumerate(documents, 1)) + "\nPlease open this application and choose Correct application.")
+    return "Rejected: information needed", ("Your application is rejected because we could not validate your information. We would need these from you:\n"
+                                            + "\n".join(f"{i}. {d}" for i, d in enumerate(documents, 1))
+                                            + "\nThis application is now closed. Please submit a new application with them.")
 
 
 # ---------------------------------------------------------------- the outbox
@@ -50,7 +51,7 @@ def get_run(run_id):
 def enqueue(conn, run, event, headline, body, immediate=False):
     """Idempotent: one message per (submission, event). One thread per application: Re: after its first mail.
     immediate: a simulated message needs no second step, so it is stored as sent at once (a real provider still goes through the sender). Returns the status."""
-    root = run.get("application_id") or run["run_id"]
+    root = run["run_id"]
     to = (run["payload"].get("email") or "").strip()
     subject = f"Your vendor application ({root})"
     sent = immediate and bool(to) and not real_mail(to)

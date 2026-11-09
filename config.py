@@ -132,7 +132,7 @@ EVIDENCE_FIELDS = {
     "BANK_DETAILS_CHANGED": ["bank_account_number", "bank_code"],
     "IDENTITY_CHANGED_BETWEEN_ATTEMPTS": ["company_name", "tax_id", "pan", "bank_account_number"],
     "SAME_NAME_DIFFERENT_COMPANY_ID": ["company_name", "mobile", "email", "address", "bank_account_number"],
-    # format errors: the vendor is asked to correct exactly these fields (so changing them on the next attempt is expected)
+    # format errors: the vendor must fix exactly these fields in the new application (so changing them on the next attempt is expected)
     "BAD_PAN_FORMAT": ["pan"], "BAD_GSTIN_FORMAT": ["tax_id"], "BAD_GSTIN_CHECKSUM": ["tax_id"], "BAD_EIN_FORMAT": ["tax_id"],
     "BAD_VAT_FORMAT": ["tax_id"], "BAD_VAT_CHECKSUM": ["tax_id"], "BAD_IFSC_FORMAT": ["bank_code"], "BAD_ROUTING_FORMAT": ["bank_code"],
     "BAD_ROUTING_CHECKSUM": ["bank_code"], "BAD_IBAN_FORMAT": ["bank_account_number"], "BAD_IBAN_CHECKSUM": ["bank_account_number"],
@@ -141,9 +141,7 @@ EVIDENCE_FIELDS = {
 # Finding severity: FIX = vendor can fix it, REVIEW = needs human judgment, RED = identity red flag
 FIX, REVIEW, RED = 1, 2, 3
 
-# Pending always names who acts next. A correctable application stays open for the
-# vendor; an inconclusive or high-risk application goes to a reviewer.
-VENDOR_ACTION = "Vendor action required"
+# Pending means one thing: a human must decide. Anything the vendor got wrong is Rejected, and the vendor files a new application.
 NEEDS_REVIEW = "Needs review"
 # An exact repeat of an onboarded vendor is Approved, but nothing new is created: the vendor is simply told it is already registered.
 ALREADY_REGISTERED = "Already registered"
@@ -160,9 +158,8 @@ VENDORS_ON_FILE = [{
 }]
 
 # ---- When is a run Rejected? (the status definitions, in code)
-# Rejected is terminal: a finding below rejects on its own, two or more identity
-# contradictions occur together, or a reviewer rejects it. Missing information,
-# ordinary format errors and a single likely typo stay Pending for vendor action.
+# Rejected is terminal: the application is closed and a new one starts from scratch. It happens when a finding below rejects on its own,
+# two or more identity contradictions occur together, any other wrong or missing input is found, or a reviewer rejects it.
 REJECT_ON_ITS_OWN = {
     "SANCTIONS_MATCH": "we are unable to onboard this company",  # deliberately vague: never tell a listed party what matched
     "EMBARGOED_BANK_COUNTRY": "we cannot make payments to a bank in that country",
@@ -178,8 +175,7 @@ REJECT_ON_ITS_OWN = {
 NO_RETRY_CODES = {"SANCTIONS_MATCH", "EMBARGOED_BANK_COUNTRY", "LOOKALIKE_OF_EXISTING_VENDOR"}
 # Countries under comprehensive sanctions (simplified: a real deployment uses the current official lists).
 EMBARGOED_COUNTRIES = {"KP", "IR", "SY", "CU"}
-# Repeat attempts concern fresh applications filed after a terminal rejection.
-# Normal corrections remain revisions of the same open application and do not count.
+# Repeat attempts concern fresh applications filed after a rejection. Every new application is checked from scratch; this only links them for staff.
 ATTEMPTS_BEFORE_REVIEW = 3  # earlier linked attempts allowed before the next one goes to a reviewer
 ATTEMPT_WINDOW_DAYS = 30
 NAME_LINK_SCORE = 92  # company names this similar (0-100) count as the same applicant

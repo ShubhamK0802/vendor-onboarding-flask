@@ -444,7 +444,7 @@ def check_duplicates(submission, existing_vendors):
 
 
 # ---- 9. earlier attempts ------------------------------------------------------------------------
-# Corrections are revisions of one open application and are not attempts. This stage only links fresh applications filed after a terminal rejection,
+# This stage links fresh applications filed after a rejection,
 # to spot trial and error or an unexplained change of identity.
 
 IDENTITY_FIELDS = [("company_name", "company name"), ("tax_id", "tax ID"), ("pan", "PAN"), ("bank_account_number", "bank account")]

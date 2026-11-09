@@ -3,22 +3,20 @@
 <script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({startOnLoad:true,theme:'neutral'});</script>
 <style>body{font:16px system-ui;max-width:1000px;margin:40px auto;padding:0 20px;color:#182230}h1,h2{color:#0b3b60}.mermaid{background:#fff;border:1px solid #d9e2ea;border-radius:12px;padding:18px;margin-bottom:32px}</style></head><body>
 <h1>Vendor onboarding: canonical workflow</h1>
-<p>Every state has a clear owner. Corrections are revisions of the same application; rejection is terminal.</p>
+<p>Every application is decided once. Pending means a reviewer must decide; a rejected vendor applies again.</p>
 <h2>Lifecycle</h2><pre class="mermaid">
 flowchart TD
  A[Vendor submits] --> B[Run all checks]
  B --> C{Evidence}
  C -->|clear| AP[Approved]
- C -->|correctable| VA[Pending: Vendor action required]
  C -->|uncertain or high risk| NR[Pending: Needs review]
- C -->|hard stop or 2 contradictions| RJ[Rejected]
- VA --> F[Prefilled correction, same application]
- F --> B
+ C -->|anything wrong, hard stop or 2 contradictions| RJ[Rejected: closed]
  NR --> T[Reviewer takes case]
  T --> D{Decide}
  D -->|approve| AP
- D -->|request info| VA
- D -->|reject| RJ
+ D -->|reject or request info| RJ
+ RJ --> N[Vendor files a NEW application]
+ N --> B
 </pre>
 <h2>Payment-risk review</h2><pre class="mermaid">
 flowchart LR
@@ -27,14 +25,14 @@ flowchart LR
  E --> I[Trusted-contact callback or independent bank confirmation]
  I --> A[Approval unlocked and method audited]
 </pre>
-<h2>Correction loop</h2><pre class="mermaid">
+<h2>Reject, then apply again</h2><pre class="mermaid">
 sequenceDiagram
  participant V as Vendor
  participant S as System
- V->>S: Revision 1
- S-->>V: Vendor action required + numbered list
- V->>S: Correct prefilled application
- S->>S: Save revision 2 and rerun every check
- S-->>V: Current outcome
+ V->>S: Application A
+ S-->>V: Rejected + numbered list + submit a new application
+ V->>S: Application B with the details corrected
+ S->>S: Run every check from scratch
+ S-->>V: Outcome
 </pre>
 </body></html>

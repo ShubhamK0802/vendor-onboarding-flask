@@ -18,18 +18,18 @@ mindmap
       Approved
         Already registered
       Pending
-        Vendor action required
-          Prefilled correction
-          Same application
-          Full recheck
         Needs review
           Claim ownership
           Evidence comparison
           Independent bank verification
       Rejected
+        Wrong or missing input
         Hard stop
         Two contradictions
         Reviewer rejection
+        Apply again
+          New application
+          Full recheck
     Communicate
       Safe vendor wording
       One mail thread
@@ -37,6 +37,6 @@ mindmap
     Protect
       Mask bank account
       Hide internal notes
-      Link fresh terminal attempts
+      Link repeat applications
       Rate limit
 ```

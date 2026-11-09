@@ -14,14 +14,14 @@ from datetime import datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from checks import company_key
-from config import ALREADY_REGISTERED, VENDOR_ACTION, VENDORS_ON_FILE
+from config import ALREADY_REGISTERED, VENDORS_ON_FILE
 
 DB_PATH = os.environ.get("DB_PATH") or "onboarding.db"
 POSTGRES_URL = os.environ.get("POSTGRES_URL")
 SNAPSHOT_FIELDS = ["company_name", "bank_account_name", "tax_id", "pan", "country", "bank_code", "mobile", "email"]
 SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, ts TEXT, company TEXT, country TEXT, status TEXT, sub_status TEXT,
-    rule_version TEXT, seconds REAL, decision TEXT, payload TEXT, snapshot TEXT, parent_id TEXT);
+    rule_version TEXT, seconds REAL, decision TEXT, payload TEXT, snapshot TEXT);
 CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY, run_id TEXT, decision TEXT, note TEXT, reviewer TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS docs(run_id TEXT, slot TEXT, filename TEXT, data BLOB);
 CREATE TABLE IF NOT EXISTS vendor_ids(company_key TEXT PRIMARY KEY, vendor_id TEXT);
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS vendors(company_key TEXT PRIMARY KEY, company_name TE
 
 POSTGRES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, seq BIGSERIAL UNIQUE, ts TEXT, company TEXT, country TEXT, status TEXT, sub_status TEXT,
-    rule_version TEXT, seconds DOUBLE PRECISION, decision TEXT, payload TEXT, snapshot TEXT, parent_id TEXT);
+    rule_version TEXT, seconds DOUBLE PRECISION, decision TEXT, payload TEXT, snapshot TEXT);
 CREATE TABLE IF NOT EXISTS decisions(id BIGSERIAL PRIMARY KEY, run_id TEXT, decision TEXT, note TEXT, reviewer TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS docs(run_id TEXT, slot TEXT, filename TEXT, data BYTEA);
 CREATE TABLE IF NOT EXISTS vendor_ids(company_key TEXT PRIMARY KEY, vendor_id TEXT);
@@ -214,14 +214,14 @@ def make_snapshot(submission):
     return {**{f: submission.get(f) for f in SNAPSHOT_FIELDS}, "bank_account_number": mask_account(submission.get("bank_account_number"))}
 
 
-def save_run(submission, decision, seconds, files=None, same_as=None, parent_id=None):
+def save_run(submission, decision, seconds, files=None, same_as=None):
     """files: {slot: (filename, bytes)} - the uploaded documents, kept so a reviewer can open them."""
     run_id, key = uuid.uuid4().hex[:8], company_key(submission)  # random, so nobody can guess another submission's ID
     with closing(connect()) as conn, conn:
-        conn.execute("INSERT INTO runs(run_id, ts, company, country, status, sub_status, rule_version, seconds, decision, payload, snapshot, parent_id) "
-                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
+        conn.execute("INSERT INTO runs(run_id, ts, company, country, status, sub_status, rule_version, seconds, decision, payload, snapshot) "
+                     "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (
             run_id, now(), submission.get("company_name"), submission.get("country"), decision["status"], decision["sub_status"],
-            decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission)), parent_id))
+            decision["rule_version"], round(seconds, 3), json.dumps(decision), json.dumps(submission), json.dumps(make_snapshot(submission))))
         conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
         vendor = vendor_for(conn, submission, key, same_as)  # same_as: an earlier run by the same applicant (any status)
         conn.execute("INSERT INTO run_vendor VALUES (?,?)", (run_id, vendor))
@@ -311,11 +311,10 @@ def final_state(run):
     d = run["decision_by"]
     if d and d["decision"] in ("Approved", "Rejected"):
         return {"final": d["decision"], "final_sub": f"{d['decision']} by reviewer", "waiting_on": "-"}
-    if d:  # information requested: the application stays open for a correction
-        return {"final": "Pending", "final_sub": VENDOR_ACTION, "waiting_on": "Vendor"}
+    if d:  # information requested: the application is closed as rejected; the vendor is told what to send in a new application
+        return {"final": "Rejected", "final_sub": "Information needed", "waiting_on": "-"}
     if run["status"] == "Pending":
-        return {"final": "Pending", "final_sub": run["sub_status"],
-                "waiting_on": "Reviewer" if run["sub_status"] != VENDOR_ACTION else "Vendor"}
+        return {"final": "Pending", "final_sub": run["sub_status"], "waiting_on": "Reviewer"}
     return {"final": run["status"], "final_sub": run["sub_status"], "waiting_on": "-"}
 
 
@@ -333,15 +332,7 @@ def load_runs():
         run["codes"] = [f["code"] for f in run["findings"]]
         run.update(decision_by={"id": d_id, "run_id": run["run_id"], "decision": d_decision, "note": d_note, "reviewer": d_reviewer, "ts": d_ts} if d_id is not None else None)
     for run in runs:
-        run["application_id"] = run.get("parent_id") or run["run_id"]
-    latest_revision = {run["application_id"]: run["run_id"] for run in runs}
-    for run in runs:
-        latest_id = latest_revision[run["application_id"]]
-        run["superseded_by"] = latest_id if latest_id != run["run_id"] else None
-        if run["superseded_by"]:
-            run.update(final="Pending", final_sub="Corrected submission received", waiting_on="-")
-        else:
-            run.update(final_state(run))
+        run.update(final_state(run))
         run["decided_by"] = run["decision_by"]["reviewer"] if run["decision_by"] and run["decision_by"]["decision"] in ("Approved", "Rejected") else "Automatic"
     return runs
 

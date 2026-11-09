@@ -16,7 +16,7 @@ from markupsafe import Markup  # noqa: E402
 
 import mailer  # noqa: E402
 import store  # noqa: E402
-from config import EVIDENCE_FIELDS, FIELD_LABELS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, RATE_LIMIT_PER_HOUR, RULE_VERSION, VENDOR_ACTION  # noqa: E402
+from config import EVIDENCE_FIELDS, FIELD_LABELS, NEEDS_REVIEW, REASON_LABELS, REJECT_ON_ITS_OWN, RATE_LIMIT_PER_HOUR, RULE_VERSION  # noqa: E402
 from checks import link_reasons  # noqa: E402
 from decide import build_decision, iter_stages, parse_submission  # noqa: E402
 
@@ -149,27 +149,13 @@ def submit_page():
     return render_submit()
 
 
-def render_submit(prefill=None, correction=None):
+def render_submit():
     samples = [(n, n[:-5].replace("_", " ") + (f"  ({SAMPLE_HINTS[n]})" if n in SAMPLE_HINTS else "")) for n in sample_files()]
-    return render_template("submit.html", samples=samples, country=COUNTRY, names=COUNTRY_NAMES,
-                           prefill=prefill or {}, correction=correction)
+    return render_template("submit.html", samples=samples, country=COUNTRY, names=COUNTRY_NAMES)
 
 
-@app.get("/correct/<run_id>")
-def correct_application(run_id):
-    run = get_run(run_id)
-    if not run:
-        abort(404)
-    if run["waiting_on"] != "Vendor":
-        flash("This application is not waiting for corrections.", "error")
-        return redirect(url_for("submit_page"))
-    return render_submit(run["payload"], run)
-
-
-def form_submission(existing=None):
+def form_submission():
     documents, files = {}, {}
-    stored = {d["slot"]: d for d in store.get_docs(existing["run_id"]) } if existing else {}
-    earlier = (existing["payload"].get("documents") or {}) if existing else {}
     for slot in DOC_SLOTS:
         upload = request.files.get(slot)
         if upload and upload.filename:
@@ -181,16 +167,12 @@ def form_submission(existing=None):
             documents[slot] = {"filename": upload.filename, "file_type": extension,
                                "size_bytes": len(data), "declared_type": slot, "signature_valid": signature_valid,
                                "sha256": hashlib.sha256(data).hexdigest()}  # the hash spots a re-used file
-        elif earlier.get(slot):
-            documents[slot] = earlier[slot]
-            if slot in stored:
-                files[slot] = (stored[slot]["filename"], stored[slot]["data"])
         else:
             documents[slot] = None
     return {**{f: request.form.get(f, "") for f in FIELDS}, "documents": documents}, files
 
 
-def worker(token, submission, files, parent_id=None):
+def worker(token, submission, files):
     progress = PROGRESS[token]
     try:
         history = store.load_runs()
@@ -204,10 +186,10 @@ def worker(token, submission, files, parent_id=None):
                                        "detail": stage.get("note") or (f"{len(stage['findings'])} found" if stage["findings"] else "")})
             time.sleep(pause)
         seconds = max(time.perf_counter() - started - pause * len(stages), 0)
-        # The same applicant keeps one vendor ID across attempts, even when the tax ID was the thing that was wrong or the earlier attempt was rejected.
+        # The same applicant keeps one vendor ID across applications, even when the tax ID was the thing that was wrong or the earlier one was rejected.
         # Only strong links count here (a shared name or file is a hint for the reviewer, not proof of identity).
-        same_as = parent_id or next((r["run_id"] for r in reversed(history) if {"company ID", "bank account", "phone", "email"} & set(link_reasons(submission, r))), None)
-        progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, files=files, same_as=same_as, parent_id=parent_id)
+        same_as = next((r["run_id"] for r in reversed(history) if {"company ID", "bank account", "phone", "email"} & set(link_reasons(submission, r))), None)
+        progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, files=files, same_as=same_as)
         run = next(r for r in load_runs_and_badge() if r["run_id"] == progress["run_id"])
         mailer.enqueue_verdict(progress["run_id"], run)  # the vendor is told the verdict; a background worker sends it
     except Exception as error:  # never leave the page spinning
@@ -231,9 +213,6 @@ def api_submit():
     if too_many():
         return jsonify(error="Too many submissions from your network in the last hour. Please try again later."), 429
     mode, files = request.form.get("mode"), None
-    revision = get_run(request.form.get("revision_of")) if request.form.get("revision_of") else None
-    if request.form.get("revision_of") and (not revision or revision["waiting_on"] != "Vendor"):
-        return jsonify(error="This application is not waiting for corrections"), 400
     if mode == "sample":
         name = request.form.get("sample")
         if not name:
@@ -248,20 +227,19 @@ def api_submit():
             return jsonify(error="Choose a JSON file first"), 400
         submission, error = parse_submission(upload.read().decode("utf-8", errors="replace"))
     else:
-        (submission, files), error = form_submission(revision), None
+        (submission, files), error = form_submission(), None
     if error:
         return jsonify(error=error), 400
     token = uuid.uuid4().hex[:10]
     if len(PROGRESS) > 200:
         PROGRESS.pop(next(iter(PROGRESS)))
     PROGRESS[token] = {"stages": [], "done": False, "run_id": None, "error": None}
-    parent_id = (revision["application_id"] if revision else None)
     if os.environ.get("VERCEL"):
-        run = worker(token, submission, files, parent_id)
+        run = worker(token, submission, files)
         progress = PROGRESS[token]
         result_html = render_template("_run.html", run=run, vendor_view=True) if run else ""
         return jsonify(token=token, progress=progress, result_html=result_html)
-    threading.Thread(target=worker, args=(token, submission, files, parent_id), daemon=True).start()
+    threading.Thread(target=worker, args=(token, submission, files), daemon=True).start()
     return jsonify(token=token)
 
 
@@ -375,19 +353,18 @@ def review_decision(run_id):
 @app.get("/dashboard")
 def dashboard():
     runs = store.load_runs()
-    current = [r for r in runs if not r["superseded_by"]]
+    current = runs
     total = len(current)
     pct = lambda n: f"{n / total:.0%}" if total else "0%"
     count = lambda **kw: sum(all(r[k] == v for k, v in kw.items()) for r in current)
     handled = sum(r["sub_status"] != NEEDS_REVIEW for r in current)
-    metrics = [("Sorted without a reviewer", handled, pct(handled), "The rules approved, rejected or returned it with a clear next step"),
+    metrics = [("Sorted without a reviewer", handled, pct(handled), "The rules approved or rejected it with a clear reason"),
                ("Approved automatically", count(final="Approved", decided_by="Automatic"), pct(count(final="Approved", decided_by="Automatic")), "The rules approved it with no human involved"),
-               ("Vendor action required", count(final_sub=VENDOR_ACTION), pct(count(final_sub=VENDOR_ACTION)), "The application stays open while the vendor corrects it"),
                ("Sent to a reviewer", count(sub_status=NEEDS_REVIEW), pct(count(sub_status=NEEDS_REVIEW)), "The rules could not decide, so a reviewer must"),
-               ("Rejected", count(final="Rejected"), pct(count(final="Rejected")), "A terminal rule or reviewer decision stopped the application")]
+               ("Rejected", count(final="Rejected"), pct(count(final="Rejected")), "Wrong or missing input, a hard-stop rule or a reviewer decision closed it; the vendor can file a new application")]
     show = request.args.get("show", "All")
     history = [r for r in reversed(runs) if show in ("All", r["final"])]
-    return render_template("dashboard.html", runs=runs, total=total, submissions=len(runs), metrics=metrics, show=show, history=history,
+    return render_template("dashboard.html", runs=runs, total=total, metrics=metrics, show=show, history=history,
                            with_reviewer=count(waiting_on="Reviewer"),
                            outcomes=Counter(outcome(r) for r in current).most_common(),
                            top=Counter(c for r in current for c in set(r["codes"])).most_common(),

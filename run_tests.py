@@ -12,7 +12,7 @@ import store
 
 os.environ["MAIL_WORKER"] = "0"  # the background sender is driven by hand in the tests
 from decide import parse_submission, run_pipeline
-from config import VENDOR_ACTION
+
 
 from samples import APEX, CASES, SAMPLES, SEED, INDIA, american, fresh, indian, make_iban
 
@@ -83,7 +83,7 @@ check(run(shared)["waiting_on"] == "Reviewer" and "DUPLICATE_BANK_ACCOUNT" in ru
 vid = run(shared)["vendor_id"]
 check(re.fullmatch(r"VIN[0-9A-F]{6}", vid), "vendor ID: every applicant gets one on its first submission, approved or not")
 store.save_decision(shared, "Info requested", "Please send a bank letter", "Asha")
-check(run(shared)["final"] == "Pending" and run(shared)["final_sub"] == VENDOR_ACTION and run(shared)["waiting_on"] == "Vendor", "info requested: keeps the application open and waits on the vendor")
+check(run(shared)["final"] == "Rejected" and run(shared)["final_sub"] == "Information needed" and run(shared)["waiting_on"] == "-", "info requested: closes the application as rejected, nothing waits on the vendor")
 store.save_decision(shared, "Approved", "Bank letter received", "Asha")
 check(run(shared)["vendor_id"] == vid, "vendor ID: approval does not change it")
 check(run(shared)["final"] == "Approved" and run(shared)["decided_by"] == "Asha", "reviewer approval changes the final status and records who")
@@ -97,7 +97,7 @@ check(store.mask_account("50100234567891") == "****7891" and "50100234567891" no
 bad_signature = copy.deepcopy(INDIA)
 bad_signature["documents"]["registration"]["signature_valid"] = False
 signature_result = run_pipeline(bad_signature, [])
-check((signature_result["status"], signature_result["sub_status"]) == ("Pending", VENDOR_ACTION) and "MALFORMED_DOCUMENT" in [f["code"] for f in signature_result["findings"]],
+check((signature_result["status"], signature_result["sub_status"]) == ("Rejected", None) and "MALFORMED_DOCUMENT" in [f["code"] for f in signature_result["findings"]],
       "document upload: a file whose bytes do not match its extension is returned for correction")
 
 # ---- look-alike characters are rejected outright; honest digits in names are fine
@@ -127,7 +127,7 @@ check(rejected(dict(INDIA, tax_id=INDIA["tax_id"][:5] + "\u200b" + INDIA["tax_id
       and rejected(dict(INDIA, tax_id="".join(chr(ord(c) + 0xFEE0) if c.isdigit() else c for c in INDIA["tax_id"])), "HIDDEN_CHARACTERS"), "look-alikes: an invisible character or full-width digits in an ID are rejected")
 check(rejected(dict(google, bank_account_number="7200012345670O"), "LOOKALIKE_CHARACTERS") and rejected(dict(american("Redwood Supply LLC", "84-2736195", "4400555111"), bank_code="O21000021"), "LOOKALIKE_CHARACTERS"),
       "look-alikes: a letter O in a bank account number or routing number is rejected, so it cannot dodge the duplicate-account check")
-check(verdict(dict(google, bank_account_number="12345"))[:3] == ("Pending", VENDOR_ACTION, ["BAD_ACCOUNT_FORMAT"]), "look-alikes: a bank account of the wrong length is an ordinary mistake, returned to the vendor")
+check(verdict(dict(google, bank_account_number="12345"))[:3] == ("Rejected", None, ["BAD_ACCOUNT_FORMAT"]), "look-alikes: a bank account of the wrong length is an ordinary mistake, returned to the vendor")
 check(rejected(indian("N0rthern Star Arms Trading Limited", "NORCN3459R", "72000123456705"), "SANCTIONS_MATCH"), "look-alikes: a look-alike spelling of a watchlist name does not escape the screening")
 check(rejected(indian("Apex G1obal Private Limited", "APXCG9876A", "73100123456703"), "LOOKALIKE_OF_EXISTING_VENDOR", history=[APEX]), "look-alikes: a name that looks like an onboarded vendor's is rejected")
 check(rejected(dict(INDIA, company_name="Apex G1obal Private Limited", bank_account_name="Apex G1obal Private Limited"), "LOOKALIKE_NAME"), "look-alikes: a name that differs from the tax registry only in look-alikes is rejected")
@@ -153,20 +153,20 @@ check(run(first_k)["vendor_id"] and run(first_k)["vendor_id"] != run(other_k)["v
 
 # ---- the vendor message is short and to the point
 two = run_pipeline(dict(quartz, bank_account_name="Zenith Traders", documents=dict(quartz["documents"], voided_cheque=None)), [])["vendor_message"]
-check(two == "Your application needs more information. We found these problems:\n1. Bank proof is missing: upload a voided cheque or passbook page\n2. Use a bank account in your company's name, or attach a signed authorisation letter\nPlease correct these and continue this application.", "vendor message: two problems are a short numbered list, then what to do")
-check(run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"].startswith("Your application needs more information. We found"), "vendor message: starts with the open application's next step")
+check(two == "Your application is rejected. We found these problems:\n1. Bank proof is missing: upload a voided cheque or passbook page\n2. Use a bank account in your company's name, or attach a signed authorisation letter\nThis application is now closed. Please correct the details and submit a new application.", "vendor message: two problems are a short numbered list, then what to do")
+check(run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"].startswith("Your application is rejected. We found"), "vendor message: starts by saying the application is rejected")
 
-check(outcome(dict(quartz, tax_id="123456789")) == ("Pending", VENDOR_ACTION) and "continue this application" in run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"], "status definitions: one contradiction alone stays open for the vendor to correct")
+check(outcome(dict(quartz, tax_id="123456789")) == ("Rejected", None) and "submit a new application" in run_pipeline(dict(quartz, tax_id="123456789"), [])["vendor_message"], "status definitions: one contradiction alone is rejected, with a new application invited")
 check(outcome(dict(quartz, pan="ZZZZZ9999Z")) == ("Rejected", None), "status definitions: two contradictions at once are rejected")
 near_miss = dict(quartz, bank_account_name="Quartz Mill Private Limited")
 first_try = run_pipeline(near_miss, [])
-check((first_try["status"], first_try["sub_status"]) == ("Pending", VENDOR_ACTION), "status definitions: a near-miss name stays open with what to correct")
+check((first_try["status"], first_try["sub_status"]) == ("Rejected", None), "status definitions: a near-miss name is rejected with what to correct")
 check(outcome(quartz) == ("Approved", None), "status definitions: a vendor who fixes it is approved")
 mismatch = dict(quartz, bank_account_name="Zenith Traders")
-check((run_pipeline(mismatch, [])["status"], run_pipeline(mismatch, [])["sub_status"]) == ("Pending", VENDOR_ACTION), "status definitions: a third-party bank account stays open for correction or authorisation evidence")
+check((run_pipeline(mismatch, [])["status"], run_pipeline(mismatch, [])["sub_status"]) == ("Rejected", None), "status definitions: a third-party bank account stays open for correction or authorisation evidence")
 
 fixable = submit(dict(quartz, tax_id=quartz["tax_id"][:13]))
-check(run(fixable)["final"] == "Pending" and run(fixable)["waiting_on"] == "Vendor" and run(fixable)["final_sub"] == VENDOR_ACTION, "status definitions: a correctable mistake keeps the application open for the vendor")
+check(run(fixable)["final"] == "Rejected" and run(fixable)["waiting_on"] == "-", "status definitions: a correctable mistake is rejected and closed")
 
 # ---- verification: placeholders, registry, sanctions, embargoes, the EU check
 import checks  # noqa: E402
@@ -202,7 +202,7 @@ check(store.load_runs() == [] and store.load_decisions() == [] and len(store.kno
 by_case = {case[0]: case for case in CASES}
 shown = sorted(f[:-5] for f in os.listdir("sample_inputs"))
 check(shown == sorted(file for file, _ in SAMPLES) and len(SAMPLES) == 5, "samples: the app offers 01 plus the four edge cases of the demo", f"-> {shown}")
-check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Pending", VENDOR_ACTION), ("Pending", VENDOR_ACTION), ("Rejected", None), ("Pending", "Needs review")],
+check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Rejected", None), ("Rejected", None), ("Rejected", None), ("Pending", "Needs review")],
       "samples: they cover approved, vendor correction (twice), terminal rejection and reviewer decision")
 for file, case in SAMPLES:
     with open(f"sample_inputs/{file}.json", encoding="utf-8") as handle:
@@ -260,25 +260,21 @@ form = {f: "" for f in app.FIELDS}
 form.update(mode="form", company_name="Form Vendor LLC", country="US", tax_id="84-273619", tax_document=(io.BytesIO(b"%PDF-1.4 hello"), "w9.pdf"))
 done = run_web(**form)
 check(client.get(f"/doc/{done['run_id']}/tax_document").data == b"%PDF-1.4 hello", "web: an uploaded document can be downloaded back")
-correction_page = client.get(f"/correct/{done['run_id']}")
-check(correction_page.status_code == 200 and b"Correct application" in correction_page.data and b'Form Vendor LLC' in correction_page.data and b'w9.pdf' in correction_page.data,
-      "web: a correctable run opens the same application with its fields and existing document carried forward")
+check(client.get(f"/correct/{done['run_id']}").status_code == 404, "web: there is no correction route any more; a rejected vendor applies again")
 fixed_form = {f: "" for f in app.FIELDS}
-fixed_form.update(mode="form", revision_of=done["run_id"], company_name="Form Vendor LLC", country="US", website="https://formvendor.example",
+fixed_form.update(mode="form", company_name="Form Vendor LLC", country="US", website="https://formvendor.example",
                   email="payables@formvendor.example", mobile="3125550101", address="100 Market Street, Chicago, IL 60601", tax_id="74-8926371",
                   bank_account_name="Form Vendor LLC", bank_account_number="5100234567", bank_code="021000021",
+                  tax_document=(io.BytesIO(b"%PDF-1.4 tax"), "w9.pdf"),
                   registration=(io.BytesIO(b"%PDF-1.4 registration"), "registration.pdf"),
                   voided_cheque=(io.BytesIO(b"%PDF-1.4 bank"), "bank.pdf"))
 fixed_done = run_web(**fixed_form)
 old_run, fixed_run = run(done["run_id"]), run(fixed_done["run_id"])
-check(fixed_run["final"] == "Approved" and fixed_run["application_id"] == done["run_id"] and old_run["superseded_by"] == fixed_done["run_id"]
+check(old_run["final"] == "Rejected" and old_run["waiting_on"] == "-" and fixed_run["final"] == "Approved" and fixed_done["run_id"] != done["run_id"]
       and {d["slot"] for d in store.get_docs(fixed_done["run_id"])} == {"tax_document", "registration", "voided_cheque"},
-      "web: a correction becomes a new revision of the same application, keeps earlier files, reruns every check and supersedes the old revision")
-revision_mail = store.query("SELECT thread_id, subject FROM outbox WHERE run_id IN (?,?) ORDER BY id", (done["run_id"], fixed_done["run_id"]))
-check([row["thread_id"] for row in revision_mail] == [done["run_id"], done["run_id"]] and revision_mail[1]["subject"].startswith("Re: "),
-      "messages: every revision stays in the original application's mail thread")
-closed_page = client.get(f"/correct/{fixed_done['run_id']}", follow_redirects=True)
-check(closed_page.status_code == 200 and b"not waiting for corrections" in closed_page.data, "web: an approved revision cannot be corrected again")
+      "web: the new application is a separate submission, checked from scratch; the rejected one stays rejected and closed")
+check("Submission " + fixed_done["run_id"] in client.get(f"/run/{fixed_done['run_id']}").data.decode() and b"Correct application" not in client.get(f"/run/{done['run_id']}").data,
+      "web: no correction button anywhere; a rejected result tells the vendor to apply again")
 check(client.get("/export.csv").data.startswith(b"submission id,vendor id,submitted at,company"), "web: CSV export works")
 check(b"Form Vendor LLC" in client.get("/dashboard").data and b"Sorted without a reviewer" in client.get("/dashboard").data and b"****" not in client.get("/export.csv").data, "web: dashboard lists the runs")
 client.post("/reset")
@@ -296,9 +292,9 @@ client.post("/reset")
 
 # a near-miss name: the application stays open with a clear correction path
 first = run_case("09_fix_near_miss_name")["run_id"]
-check(run(first)["final"] == "Pending" and run(first)["waiting_on"] == "Vendor" and b"match your company name exactly" in client.get(f"/run/{first}").data
-      and b"continue this application" in client.get(f"/run/{first}").data and b"Correct application" in client.get(f"/run/{first}").data,
-      "web: a near-miss name stays open, with the exact correction and a continuation button")
+check(run(first)["final"] == "Rejected" and run(first)["waiting_on"] == "-" and b"match your company name exactly" in client.get(f"/run/{first}").data
+      and b"submit a new application" in client.get(f"/run/{first}").data and b"Correct application" not in client.get(f"/run/{first}").data,
+      "web: a near-miss name is rejected with the exact correction and an invitation to apply again")
 
 # ---- reviewer desk: order, filters, taking a submission, next-up, info-requested runs ----
 contact = run_case("14_review_shared_mobile_number")["run_id"]  # submitted first
@@ -328,7 +324,7 @@ check(b"Being handled by" not in client.get(f"/review?run={contact}").data, "rev
 client.post(f"/review/{clash}/claim", data={"reviewer": "Asha"})
 page = client.post(f"/review/{clash}", data={"reviewer": "Asha", "decision": "Info requested", "note": "Send a bank letter", "sort": "oldest"}, follow_redirects=True).data
 check(f">{contact}</a>" in page.decode(), "reviewer desk: after a decision the next submission opens")
-check(run(clash)["final"] == "Pending" and run(clash)["final_sub"] == VENDOR_ACTION and run(clash)["waiting_on"] == "Vendor", "reviewer desk: info requested keeps the run open for the vendor")
+check(run(clash)["final"] == "Rejected" and run(clash)["final_sub"] == "Information needed", "reviewer desk: info requested closes the run as rejected")
 done_page = client.post(f"/review/{clash}", data={"reviewer": "Priya", "decision": "Rejected", "note": "Vendor never replied"}, follow_redirects=True).data
 check(b"no longer waiting for a reviewer" in done_page, "reviewer desk: a closed run cannot be decided again")
 client.post("/reset")
@@ -372,8 +368,8 @@ reviewing = run_case("12_review_bank_account_shared_with_another_vendor")["run_i
 mailer.deliver_queued()
 page = client.get("/messages").data.decode()
 check("Simulated: no mail service" in page and "accounts@apexglobal.example" in page and "Sent (simulated)" in page and page.count("Your application is approved.") == 1, "messages: the page says the mail service is simulated, shows who it is to, and the status of each message")
-check("Your application is under review. We will reach back to you if anything is needed." in page and "Please correct it and continue this application." in page and "Reminder" not in page,
-      "messages: under review and the vendor-action message both went out, and no reminder")
+check("Your application is under review. We will reach back to you if anything is needed." in page and "submit a new application." in page and "Reminder" not in page,
+      "messages: under review and the rejection (with a new-application invitation) both went out, and no reminder")
 shown_to_vendor = "Your application is under review. We will reach back to you if anything is needed."
 check(shown_to_vendor in client.get(f"/run/{reviewing}").data.decode() and shown_to_vendor not in client.get(f"/review?run={reviewing}").data.decode()
       and shown_to_vendor not in client.get(f"/dashboard?run={reviewing}").data.decode(), "the vendor's message shows on the vendor's result page, not on the reviewer desk or the dashboard detail")
@@ -391,7 +387,7 @@ mailer.deliver_queued()
 page = client.get("/messages").data.decode()
 check(page.count("Your application is approved.") == 2, "messages: a reviewer's approval is sent to the vendor")
 check("Your application is rejected because we could not verify your contact details." in page, "messages: a reviewer's rejection tells the vendor the reason, worked out from the findings")
-check("1. your company registration certificate showing your current legal name" in page and "Please open this application and choose Correct application." in page, "messages: a request for more information lists the documents needed and points back to the open application")
+check("1. your company registration certificate showing your current legal name" in page and "Please submit a new application with them." in page, "messages: a request for more information closes the application, lists the documents needed and asks for a new application")
 check("internal:" not in page and "different company" not in page and "another vendor" not in page, "messages: nothing the reviewer typed, and nothing about other vendors, reaches the vendor")
 check("internal:" not in client.get(f"/run/{rejecting}").data.decode() and "internal:" not in client.get(f"/run/{asking}").data.decode(),
       "vendor pages: reviewer notes never leak after a decision")
@@ -458,8 +454,8 @@ check(b"No messages yet" in client.get("/messages").data and outbox() == [], "me
 # ---- the vendor message for an incomplete form is plain and specific
 from samples import incomplete_form
 text = run_pipeline(incomplete_form(), [])["vendor_message"]
-check(text == "Your application needs more information. We found these problems:\n1. Email is missing\n2. Tax ID is missing\n3. Bank proof is missing: upload a voided cheque or passbook page\n"
-      "4. The document was declared as tax document but placed in the Registration document field\nPlease correct these and continue this application.", "vendor message: an incomplete form lists plainly what is missing and where to upload", text)
+check(text == "Your application is rejected. We found these problems:\n1. Email is missing\n2. Tax ID is missing\n3. Bank proof is missing: upload a voided cheque or passbook page\n"
+      "4. The document was declared as tax document but placed in the Registration document field\nThis application is now closed. Please correct the details and submit a new application.", "vendor message: an incomplete form lists plainly what is missing and where to upload", text)
 
 # ---- already registered, hidden vendor ID, and what a reviewer is shown when an onboarded vendor's details differ
 store.reset()
@@ -500,8 +496,8 @@ client.post("/reset")
 one = run_web(mode="sample", sample="03_edge_tax_id_wrong_for_country.json")
 two = run_web(mode="sample", sample="03_edge_tax_id_wrong_for_country.json")
 check(all("repeat attempts" not in [x["name"] for x in r["stages"]] and len(r["stages"]) == 8 for r in (one, two)), "vendor view: the live view never shows the repeat-attempts stage")
-check(all("repeat_attempts" not in [x["stage"] for x in run(item["run_id"])["decision"]["stages"]] for item in (one, two)),
-      "repeat attempts: open corrections do not count as fresh attempts")
+check("repeat_attempts" not in [x["stage"] for x in run(one["run_id"])["decision"]["stages"]] and "repeat_attempts" in [x["stage"] for x in run(two["run_id"])["decision"]["stages"]],
+      "repeat attempts: recorded for staff only once an earlier rejected application exists")
 vendor_page = client.get(f"/run/{two['run_id']}").data.decode()
 staff_page = client.get(f"/dashboard?run={two['run_id']}").data.decode()
 check("Reviewer view" not in vendor_page and "repeat attempts" not in vendor_page and 'badge orange">flagged' not in vendor_page and "Vendor VIN" not in vendor_page, "vendor view: no reviewer view, no internal stage, no flagged marks, no vendor ID")
@@ -529,11 +525,11 @@ store.save_run(pending_, run_pipeline(pending_, store.known_vendors(history_), h
 check(sum(1 for r in store.load_runs() if r["final"] == "Rejected") == 2, "attempts: both earlier applications were rejected, so both count")
 store.reset()
 
-# ---- repeat attempts: corrections do not count; fresh applications after terminal rejection do
+# ---- repeat attempts: every rejected application followed by a new one is linked for staff
 import checks as _checks
 tries = []
 base = fresh(copy.deepcopy(INDIA), "Ember Textiles Private Limited", "EMBCT5678E", "70100234567891")
-bad_tax = dict(base, tax_id="29EMBCT5678E1Z1")  # wrong check character: the vendor is asked to correct the tax ID
+bad_tax = dict(base, tax_id="29EMBCT5678E1Z1")  # wrong check character: rejected, the vendor must fix the tax ID
 def attempt(data, extra=()):
     """One more application, checked against what exists so far (as the app does), then saved."""
     history = store.load_runs()
@@ -541,9 +537,9 @@ def attempt(data, extra=()):
     rid = store.save_run(data, decision, 0.01)
     return decision, rid
 d1, r1 = attempt(bad_tax)
-check((d1["status"], d1["sub_status"]) == ("Pending", VENDOR_ACTION) and not any(f["code"] in ("REPEATED_ATTEMPTS", "IDENTITY_CHANGED_BETWEEN_ATTEMPTS") for f in d1["findings"]), "attempts: a correctable first application has no attempt findings")
+check((d1["status"], d1["sub_status"]) == ("Rejected", None) and not any(f["code"] in ("REPEATED_ATTEMPTS", "IDENTITY_CHANGED_BETWEEN_ATTEMPTS") for f in d1["findings"]), "attempts: a correctable first application has no attempt findings")
 d2, r2 = attempt(base)  # the vendor corrected exactly the tax ID they were asked to correct
-check(d2["status"] == "Approved", "attempts: an open correction does not poison a clean result")
+check(d2["status"] == "Approved", "attempts: fixing exactly what was wrong gives a clean result")
 store.reset()
 terminal = dict(base, tax_id="61-4827395", pan="ZZZZZ9999Z")
 d1, r1 = attempt(terminal)
@@ -667,7 +663,7 @@ store.reset()
 # ---- terminal rejections are written for the vendor: they name what disagrees and say what happens next
 two = run_pipeline(CASE["19_reject_two_contradictions"], SEED)["vendor_message"]
 check(two == "Your application is rejected because some of the details you entered do not agree with each other:\n1. The PAN inside your GSTIN differs from the PAN you gave\n"
-      "2. Your PAN is not a company PAN (its 4th letter should be C)\nThis application is now closed. Please check these details against your registration documents and submit a new application.",
+      "2. Your PAN is not a company PAN (its 4th letter should be C)\nThis application is now closed. Please correct the details and submit a new application.",
       "vendor message: two contradictions are named in plain words, with what to do next", two)
 check("contradict each other" not in two and "1. " in two and "2. " in two, "vendor message: no vague 'the details contradict each other'")
 sanction = run_pipeline(CASE["21_reject_sanctions_name_match"], SEED)["vendor_message"]

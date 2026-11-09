@@ -4,7 +4,7 @@
 {% if not runs %}
 <div class="card empty">No submissions yet. <a href="{{ url_for('submit_page') }}">Onboard a vendor</a> and the results will appear here.</div>
 {% else %}
-<div class="metric total" title="Current application outcomes. Corrections remain revisions of one application."><span>Applications</span><b>{{ total }}</b><small>{{ submissions }} revisions processed</small></div>
+<div class="metric total" title="Every application is decided once. A rejected vendor files a new application."><span>Applications</span><b>{{ total }}</b></div>
 <h3>How the rules sorted them</h3>
 <div class="metrics">
   {% for label, count, pct, help in metrics %}<div class="metric" title="{{ help }}"><span>{{ label }}</span><b>{{ count }}</b><small>{{ pct }}</small></div>{% endfor %}

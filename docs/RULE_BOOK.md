@@ -1,4 +1,4 @@
-# Rule book (version 7.0)
+# Rule book (version 8.0)
 
 This document is the plain-English contract for the code. `config.py`, `checks.py` and `decide.py` are the executable source of truth.
 
@@ -8,23 +8,22 @@ This document is the plain-English contract for the code. `config.py`, `checks.p
 |---|---|---|
 | **Approved** | No findings | Complete |
 | **Approved: Already registered** | Exact repeat of an onboarded vendor | Complete; create nothing new |
-| **Pending: Vendor action required** | Only FIX findings, or one RED contradiction without a hard stop | Vendor corrects the same application |
-| **Pending: Needs review** | At least one REVIEW finding and no terminal condition | Reviewer takes and decides |
-| **Rejected** | Hard-stop code, two or more RED contradictions, or reviewer rejection | Terminal |
+| **Pending: Needs review** | At least one REVIEW finding and no rejecting condition | Reviewer takes and decides |
+| **Rejected** | Any wrong or missing input (FIX findings), a hard-stop code, two or more RED contradictions, or a reviewer decision | Closed. The vendor may file a new application, checked from scratch |
 
 Decision order matters:
 
 1. No findings → Approved.
 2. Only `DUPLICATE_APPLICATION` → Approved: Already registered.
-3. A hard-stop code or at least two RED findings → Rejected.
+3. A hard-stop code or at least two RED findings → Rejected (no new application is invited for sanctions, embargo or look-alike-of-existing-vendor).
 4. Any REVIEW finding → Pending: Needs review.
-5. Otherwise → Pending: Vendor action required.
+5. Otherwise (only FIX or one RED finding) → Rejected, with the problems listed and an invitation to submit a new application.
 
 ## 2. Finding levels
 
-- **FIX:** missing data, bad format, missing/invalid file, or close name mismatch. The vendor can repair it.
+- **FIX:** missing data, bad format, missing/invalid file, or close name mismatch. The application is rejected and the vendor repairs it in a new application.
 - **REVIEW:** evidence is inconclusive, refers to an onboarded vendor, or needs independent confirmation.
-- **RED:** a cross-field identity contradiction. One may be a mistake; two together are terminal.
+- **RED:** a cross-field identity contradiction. One is listed as a problem; two together are named as contradictions. Either way the application is rejected.
 
 ## 3. Stages
 
@@ -36,20 +35,17 @@ Decision order matters:
 6. **Name match:** normalized legal names, common suffixes and umlaut transliteration; non-Latin names go to review.
 7. **Verification:** demo tax registry, fictional sanctions list, embargoed bank country and placeholder IDs. Unknown demo-registry entries are explicitly “not checked.”
 8. **Duplicates:** existing company ID/name/details, changed bank details, shared bank/contact and look-alike existing vendor.
-9. **Fresh attempts (staff only):** terminally rejected linked applications within 30 days. Normal revisions are excluded.
+9. **Repeat applications (staff only):** earlier rejected applications of the same company within 30 days.
 
-## 4. Correctable findings (FIX)
+## 4. Wrong or missing input (FIX)
 
-Examples include missing fields/documents, invalid checksums or lengths, unsupported file type, file signature mismatch, wrong declared document slot, near-match bank-holder name, and legal-form difference. The vendor message lists each correction and links to a prefilled form.
+Examples include missing fields/documents, invalid checksums or lengths, unsupported file type, file signature mismatch, wrong declared document slot, near-match bank-holder name, and legal-form difference. The application is rejected and closed. The vendor message lists each problem in plain words and says to submit a new application.
 
-A correction:
+A new application:
 
-- keeps the application ID;
-- creates a new immutable revision;
-- retains old documents unless replaced;
-- reruns every check;
-- supersedes the old actionable revision;
-- remains in the same message thread.
+- is a separate submission with its own ID and message thread;
+- runs every check from scratch; nothing is inherited from the rejected one;
+- is linked to earlier rejected applications for staff only, by company ID, bank account, phone, email, near-identical name or a reused file.
 
 ## 5. Review findings (REVIEW)
 
@@ -100,9 +96,10 @@ Two RED identity contradictions also reject—for example, a tax ID from another
 
 Approved vendors join the comparison set. Vendor IDs are internal and never shown to vendors.
 
-## 8. Fresh-attempt control
+## 8. Repeat-application control
 
-Only terminally rejected applications count. Links may be company ID, bank account, phone, email, near-identical name or a reused file. From the fourth linked application, a clean result still needs review. A serious earlier rejection or an identity field changed without being requested also triggers review. Pending corrections, pending review and approved applications do not count.
+Only rejected applications count. From the fourth linked application in 30 days, a clean result still needs review. A serious earlier rejection or an identity field changed without being asked for also triggers review. Pending and approved applications do not count.
+
 
 ## 9. Vendor communication
 
@@ -110,12 +107,11 @@ Only terminally rejected applications count. Links may be company ID, bank accou
 |---|---|
 | Approved | “Your application is approved.” |
 | Already registered | “You are already registered with us. No new application is needed.” |
-| Vendor action | Numbered correction list, then “continue this application.” |
 | Needs review | “Your application is under review…” |
-| Terminal rejection | Safe reason only; no screening mechanics or other-vendor data |
-| Reviewer requests information | Required evidence list plus **Correct application** |
+| Rejected | Plain reasons or the numbered problem list, then “This application is now closed. Please correct the details and submit a new application.” Sanctions and embargo rejections say nothing more and invite no new application. No screening mechanics or other-vendor data |
+| Reviewer requests information | Closed as rejected: the required evidence list, then “Please submit a new application with them.” |
 
-Reviewer-written notes never appear on the vendor page or in vendor mail. All messages use one thread per application.
+Reviewer-written notes never appear on the vendor page or in vendor mail. Each application has its own message thread.
 
 ## 10. Demo boundaries
 

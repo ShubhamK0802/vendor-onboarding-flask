@@ -120,10 +120,17 @@ app.jinja_env.globals.update(submitted=submitted, effect=effect, badge=badge, re
 NAV = {"version": -1, "at": 0.0, "count": 0}  # the reviewer-queue badge: counted at most every few seconds, not on every page
 
 
+def load_runs_and_badge():
+    """All runs, and the reviewer-queue badge counted from the same load (so rendering the next page needs no second query)."""
+    runs = store.load_runs()
+    NAV.update(version=store.version(), at=time.time(), count=sum(r["waiting_on"] == "Reviewer" for r in runs))
+    return runs
+
+
 @app.context_processor
 def nav_counts():
     if NAV["version"] != store.version() or time.time() - NAV["at"] > 5:
-        NAV.update(version=store.version(), at=time.time(), count=sum(r["waiting_on"] == "Reviewer" for r in store.load_runs()))
+        load_runs_and_badge()
     return {"n_reviewer": NAV["count"]}
 
 
@@ -201,7 +208,7 @@ def worker(token, submission, files, parent_id=None):
         # Only strong links count here (a shared name or file is a hint for the reviewer, not proof of identity).
         same_as = parent_id or next((r["run_id"] for r in reversed(history) if {"company ID", "bank account", "phone", "email"} & set(link_reasons(submission, r))), None)
         progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, files=files, same_as=same_as, parent_id=parent_id)
-        run = get_run(progress["run_id"])
+        run = next(r for r in load_runs_and_badge() if r["run_id"] == progress["run_id"])
         mailer.enqueue_verdict(progress["run_id"], run)  # the vendor is told the verdict; a background worker sends it
     except Exception as error:  # never leave the page spinning
         progress["error"] = f"Something went wrong: {error}"

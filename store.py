@@ -99,7 +99,7 @@ def compatible_sql(sql):
     elif statement.upper().startswith("INSERT OR IGNORE"):
         statement = re.sub(r"^INSERT\s+OR\s+IGNORE", "INSERT", statement, count=1, flags=re.I)
         statement += " ON CONFLICT DO NOTHING"
-    statement = statement.replace("ORDER BY ts, rowid", "ORDER BY ts, seq")
+    statement = statement.replace("ORDER BY ts, rowid", "ORDER BY ts, seq").replace("ORDER BY r.ts, r.rowid", "ORDER BY r.ts, r.seq")
     return statement.replace("?", "%s")
 
 
@@ -176,6 +176,7 @@ def connect():
                 conn.row_factory = sqlite3.Row
                 conn.executescript(SQLITE_SCHEMA)
             _shared.update(target=target, conn=conn, postgres=using_postgres())
+            _shared["vendors"] = None
             seed()  # once per connection, not once per call: on a remote database every statement is a network round trip
             TIMING["connect_ms"] += (time.perf_counter() - opened) * 1000
         return Handle()
@@ -188,6 +189,7 @@ def seed():
     """Fill an empty vendor master with the vendors that were already on file."""
     conn = _shared["conn"]
     if not conn.execute("SELECT 1 FROM vendors").fetchone():
+        _shared["vendors"] = None
         values = [(v["company_key"], v["company_name"], v["bank_account_number"], v["mobile"], v["email"], v["address"]) for v in VENDORS_ON_FILE]
         Handle().executemany("INSERT OR IGNORE INTO vendors VALUES (?,?,?,?,?,?)", values)
         Handle().executemany("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", [(v["company_key"], new_vendor_id(v["country"])) for v in VENDORS_ON_FILE])
@@ -300,6 +302,7 @@ def reset():
         for table in ("runs", "decisions", "docs", "vendors", "claims", "vendor_ids", "run_vendor", "outbox"):
             conn.execute(f"DELETE FROM {table}")
         seed()  # restored at once, so no later call has to check
+    _shared["vendors"] = None
     _shared["version"] += 1
 
 
@@ -318,15 +321,17 @@ def final_state(run):
 
 def load_runs():
     """Oldest first. Each run carries its parsed decision, latest reviewer decision, and final state."""
-    runs = query("SELECT * FROM runs ORDER BY ts, rowid")
-    latest = {d["run_id"]: d for d in load_decisions()}
-    vendor_ids = {v["run_id"]: v["vendor_id"] for v in query("SELECT * FROM run_vendor")}
+    # One query, not three: each statement is a network round trip on a remote database. The latest reviewer decision and the vendor ID come in by join.
+    runs = query("SELECT r.*, v.vendor_id AS v_vendor_id, d.id AS d_id, d.decision AS d_decision, d.note AS d_note, d.reviewer AS d_reviewer, d.ts AS d_ts "
+                 "FROM runs r LEFT JOIN run_vendor v ON v.run_id = r.run_id "
+                 "LEFT JOIN decisions d ON d.id = (SELECT MAX(id) FROM decisions WHERE run_id = r.run_id) ORDER BY r.ts, r.rowid")
     for run in runs:
         run.update(decision=json.loads(run["decision"]), payload=json.loads(run["payload"]), snapshot=json.loads(run["snapshot"]))
-        run["vendor_id"] = vendor_ids.get(run["run_id"], "")
+        run["vendor_id"] = run.pop("v_vendor_id") or ""
+        d_id, d_decision, d_note, d_reviewer, d_ts = (run.pop(k) for k in ("d_id", "d_decision", "d_note", "d_reviewer", "d_ts"))
         run["findings"] = run["decision"].get("findings", [])
         run["codes"] = [f["code"] for f in run["findings"]]
-        run.update(decision_by=latest.get(run["run_id"]))
+        run.update(decision_by={"id": d_id, "run_id": run["run_id"], "decision": d_decision, "note": d_note, "reviewer": d_reviewer, "ts": d_ts} if d_id is not None else None)
     for run in runs:
         run["application_id"] = run.get("parent_id") or run["run_id"]
     latest_revision = {run["application_id"]: run["run_id"] for run in runs}
@@ -345,4 +350,6 @@ def known_vendors(runs):
     """What the duplicate check compares against: the vendors on file plus everything finally approved (by the rules or a reviewer)."""
     approved = [{"company_key": company_key(r["payload"]), "company_name": r["company"], "bank_account_number": r["payload"].get("bank_account_number"),
                  "mobile": r["payload"].get("mobile"), "email": r["payload"].get("email"), "address": r["payload"].get("address")} for r in runs if r["final"] == "Approved" and r["sub_status"] != ALREADY_REGISTERED]
-    return query("SELECT * FROM vendors") + approved
+    if _shared.get("vendors") is None:  # the vendor master only changes on reset: read it once, not on every submission
+        _shared["vendors"] = query("SELECT * FROM vendors")
+    return list(_shared["vendors"]) + approved

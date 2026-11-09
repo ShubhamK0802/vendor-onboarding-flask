@@ -35,7 +35,7 @@ if ($('#stages')) {
       $('#result-title').textContent = 'Verifying vendor…';
       let progress = started.progress || null;
       if (progress && progress.stages.length) {  // the whole run came back in one response (serverless host): replay the stages one by one
-        for (let i = 1; i <= progress.stages.length; i++) { show(progress.stages.slice(0, i)); await new Promise((resolve) => setTimeout(resolve, 180)); }
+        for (let i = 1; i <= progress.stages.length; i++) { show(progress.stages.slice(0, i)); await new Promise((resolve) => setTimeout(resolve, 100)); }
       }
       for (;;) {
         if (!progress) progress = await (await fetch(`/api/progress/${started.token}`)).json();

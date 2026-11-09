@@ -599,7 +599,7 @@ try:
 finally:
     os.environ.pop("VERCEL", None)
     store._shared["conn"].set_trace_callback(None)
-check(submit_statements <= 24, "round trips: a submit makes at most 24 SQL statements (it was about 43)", submit_statements)
+check(submit_statements <= 11, "round trips: a submit makes at most 11 SQL statements (it was about 43, then 19)", submit_statements)
 check(page_statements <= 3, "round trips: two page loads make at most 3 statements (the nav badge count is cached)", page_statements)
 store.reset()
 check(len(store.known_vendors([])) == 1, "round trips: reset restores the vendors on file at once, with no per-call check")
@@ -648,6 +648,20 @@ mine_json = dict(CASE["14_review_shared_mobile_number"], company_name="Uploaded 
 uploaded = run_web(mode="json", json_file=(io.BytesIO(json.dumps(mine_json).encode()), "mine.json"))["run_id"]
 check(run(uploaded)["company"] == "Uploaded Through The JSON Tab Private Limited", "tab: a chosen file is the one that is processed")
 check("data.set('mode', 'json')" in open("static/app.js", encoding="utf-8").read(), "tab: the page switches to file mode when a file is chosen")
+store.reset()
+
+# ---- serverless mail: a simulated message is stored as sent in one step, and a later message in the same thread is still "Re:"
+os.environ["VERCEL"] = "1"
+try:
+    store.reset()
+    thread_run = run_case("14_review_shared_mobile_number")["run_id"]
+    client.post(f"/review/{thread_run}/claim", data={"reviewer": "Asha"})
+    client.post(f"/review/{thread_run}", data={"reviewer": "Asha", "decision": "Rejected", "note": "not a real company"})
+    rows = [row for row in outbox() if row["run_id"] == thread_run]
+finally:
+    os.environ.pop("VERCEL", None)
+check(len(rows) == 2 and all(row["status"] == "sent" and row["transport"] == "simulated" and row["attempts"] == 1 and row["sent_at"] for row in rows), "serverless mail: simulated messages are stored as sent in one step", [r["status"] for r in rows])
+check(not rows[0]["subject"].startswith("Re:") and rows[1]["subject"].startswith("Re: ") and rows[0]["thread_id"] == rows[1]["thread_id"], "serverless mail: the second message of a thread is a Re: reply, chosen inside the insert")
 store.reset()
 
 print("ALL PASSED" if not failed else f"FAILED: {failed}")

@@ -47,33 +47,38 @@ def get_run(run_id):
     return next(r for r in store.load_runs() if r["run_id"] == run_id)
 
 
-def enqueue(conn, run, event, headline, body):
-    """Idempotent: one message per (submission, event). One thread per application: Re: after its first mail."""
+def enqueue(conn, run, event, headline, body, immediate=False):
+    """Idempotent: one message per (submission, event). One thread per application: Re: after its first mail.
+    immediate: a simulated message needs no second step, so it is stored as sent at once (a real provider still goes through the sender). Returns the status."""
     root = run.get("application_id") or run["run_id"]
     to = (run["payload"].get("email") or "").strip()
     subject = f"Your vendor application ({root})"
-    row = conn.execute("SELECT COUNT(*) AS n FROM outbox WHERE thread_id=?", (root,)).fetchone()
-    message_count = row["n"] if store.using_postgres() else row[0]
-    if message_count:
-        subject = "Re: " + subject
-    conn.execute("INSERT OR IGNORE INTO outbox(thread_id, run_id, event, recipient, subject, body, headline, created, status, attempts) VALUES (?,?,?,?,?,?,?,?,?,0)",
-                 (root, run["run_id"], event, to, subject, body, headline, now(), "queued" if to else "noaddr"))
+    sent = immediate and bool(to) and not real_mail(to)
+    status = "noaddr" if not to else "sent" if sent else "queued"
+    stamp = now()
+    # One statement: the subject is "Re: ..." when the thread already has a message (a separate COUNT query is another network round trip)
+    conn.execute("INSERT OR IGNORE INTO outbox(thread_id, run_id, event, recipient, subject, body, headline, created, status, sent_at, transport, attempts) "
+                 "VALUES (?,?,?,?,CASE WHEN (SELECT COUNT(*) FROM outbox WHERE thread_id=?) > 0 THEN ? ELSE ? END,?,?,?,?,?,?,?)",
+                 (root, run["run_id"], event, to, root, "Re: " + subject, subject, body, headline, stamp, status, stamp if sent else None, "simulated" if sent else None, 1 if sent else 0))
+    return status
 
 
 def enqueue_verdict(run_id, run=None):
     run = run or get_run(run_id)  # the caller usually has it already: loading every run again is several round trips
+    serverless = bool(os.environ.get("VERCEL"))
     with closing(store.connect()) as conn, conn:
-        enqueue(conn, run, "verdict", HEADLINES[(run["status"], run["sub_status"])], run["decision"]["vendor_message"])
-    if os.environ.get("VERCEL"):
-        deliver_queued()  # serverless functions cannot rely on a background thread after the response
+        status = enqueue(conn, run, "verdict", HEADLINES[(run["status"], run["sub_status"])], run["decision"]["vendor_message"], immediate=serverless)
+    if serverless and status == "queued":
+        deliver_queued()  # serverless functions cannot rely on a background thread after the response; only real mail still needs the sender
 
 
 def enqueue_decision(run_id, decision_id):
     run, decision = get_run(run_id), store.query("SELECT decision FROM decisions WHERE id=?", (decision_id,))[0]["decision"]
     headline, body = decision_mail(run, decision)
+    serverless = bool(os.environ.get("VERCEL"))
     with closing(store.connect()) as conn, conn:
-        enqueue(conn, run, f"decision:{decision_id}", headline, body)
-    if os.environ.get("VERCEL"):
+        status = enqueue(conn, run, f"decision:{decision_id}", headline, body, immediate=serverless)
+    if serverless and status == "queued":
         deliver_queued()
 
 

@@ -28,11 +28,14 @@ Full rules: [docs/RULE_BOOK.md](docs/RULE_BOOK.md). Canonical flow: [docs/WORKFL
 |---|---|
 | 01 clean vendor | Approved. Submit it a second time: Already registered (the happy path) |
 | 02 incomplete form, wrong document | Rejected, with a numbered list of what to fix; apply again with a complete form (edge case 1) |
+| 02b corrected version of 02 | Approved: submit it after 02 to show a rejected vendor applying again (a new application, checked from scratch) |
 | 03 US company with an Indian GSTIN | Rejected: the tax ID does not fit the country; apply again with the right one (edge case 2) |
+| 03b corrected version of 03 | Approved, after 03 |
 | 05 two identity contradictions | Rejected: the details disagree with each other, and the message names them (edge case 3) |
+| 05b corrected version of 05 | Approved, after 05 |
 | 06 existing vendor changes its bank account | Needs review; independent verification required to approve. Submit 01 first (edge case 4, the payment-fraud case) |
 
-The app offers only these five samples: the happy path and the edge cases the demo video talks about. The larger rule matrix lives in the tests (`samples.CASES`).
+The app offers eight samples: the happy path, the edge cases the demo video talks about, and a corrected `b` version of each rejected one. The larger rule matrix lives in the tests (`samples.CASES`).
 
 `demo_form_submission/` contains a clean form payload and four fictional PDFs.
 

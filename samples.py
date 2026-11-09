@@ -137,6 +137,10 @@ CASES = [
     ("23_reject_cancelled_registration", indian("Orbit Exports Private Limited", "ORBCO5612S", "81000123456713"), SEED, "Rejected", None, {"status": "cancelled"}),
     ("24_reject_placeholder_tax_id", american("Summit Tools LLC", "12-3456789", "6600123987", mobile="4155550177"), SEED, "Rejected", None, None),
     ("25_fix_incomplete_form_with_wrong_document", incomplete_form(), SEED, "Rejected", None, None),
+    # ---------------- the corrected version of a rejected sample: what the vendor sends as a NEW application
+    ("28_approved_corrected_incomplete_form", indian("Delta Pumps Private Limited", "DELCP3456L", "72000123456702"), SEED, "Approved", None, None),
+    ("29_approved_corrected_us_tax_id", american("Redwood Supply LLC", "71-3846259", "4400555111", mobile="3105550188"), SEED, "Approved", None, None),
+    ("30_approved_corrected_identity", indian("Cobalt Tools Private Limited", "COBCT9012S", "79000123456711"), SEED, "Approved", None, None),
     ("27_approved_form_demo_vendor", demo_form_vendor(), SEED, "Approved", None, None),
     # ---------------- the corrected versions of the edge-case samples (what the vendor sends after being told what is wrong)
     ("28_corrected_incomplete_form", indian("Delta Pumps Private Limited", "DELCP3456L", "72000123456702"), SEED, "Approved", None, None),
@@ -161,8 +165,11 @@ CASES = [
 SAMPLES = [
     ("01_approved_india_clean", "01_approved_india_clean"),                                                 # the happy path; submit it twice to see "already registered"
     ("02_edge_incomplete_form_wrong_document", "25_fix_incomplete_form_with_wrong_document"),               # edge case: "incomplete forms", "the wrong documents": a numbered list, then a correction
-    ("03_edge_tax_id_wrong_for_country", "07_fix_us_company_with_indian_gstin"),                            # edge case: "the tax ID format is wrong for the country they claim"
+    ("02b_corrected_incomplete_form", "28_approved_corrected_incomplete_form"),                           # apply again after 02: a complete form is approved
+    ("03_edge_tax_id_wrong_for_country", "07_fix_us_company_with_indian_gstin"),
+    ("03b_corrected_tax_id", "29_approved_corrected_us_tax_id"),                                          # apply again after 03
     ("05_edge_identity_fields_contradict", "19_reject_two_contradictions"),                                 # edge case: two identity contradictions at once cannot be a typo: rejected
+    ("05b_corrected_identity", "30_approved_corrected_identity"),                                         # apply again after 05
     ("06_edge_existing_vendor_changes_bank_account", "11_review_existing_vendor_changes_bank_account"),     # edge case: "payment fraud": a reviewer must verify it; submit 01 first
 ]
 

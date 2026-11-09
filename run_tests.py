@@ -201,9 +201,9 @@ check(store.load_runs() == [] and store.load_decisions() == [] and len(store.kno
 # ---- the app offers nine samples (one clean vendor, six edge cases and two review cases) and the corrected version of each edge case a vendor can fix
 by_case = {case[0]: case for case in CASES}
 shown = sorted(f[:-5] for f in os.listdir("sample_inputs"))
-check(shown == sorted(file for file, _ in SAMPLES) and len(SAMPLES) == 5, "samples: the app offers 01 plus the four edge cases of the demo", f"-> {shown}")
-check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Rejected", None), ("Rejected", None), ("Rejected", None), ("Pending", "Needs review")],
-      "samples: they cover approved, vendor correction (twice), terminal rejection and reviewer decision")
+check(shown == sorted(file for file, _ in SAMPLES) and len(SAMPLES) == 8, "samples: the app offers 01, the four edge cases and a corrected version of each rejected one", f"-> {shown}")
+check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Rejected", None), ("Approved", None), ("Rejected", None), ("Approved", None), ("Rejected", None), ("Approved", None), ("Pending", "Needs review")],
+      "samples: each rejected sample is followed by its corrected version, which is approved; then the reviewer case")
 for file, case in SAMPLES:
     with open(f"sample_inputs/{file}.json", encoding="utf-8") as handle:
         check(json.load(handle) == json.loads(json.dumps(by_case[case][1])), f"samples: {file} is the tested case {case}")

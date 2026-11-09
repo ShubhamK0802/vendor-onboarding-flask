@@ -1,0 +1,34 @@
+{
+  "company_name": "Redwood Supply LLC",
+  "country": "US",
+  "email": "ap@redwood.example",
+  "mobile": "3105550188",
+  "address": "250 Hudson Street, New York, NY 10013",
+  "tax_id": "71-3846259",
+  "pan": null,
+  "bank_account_name": "Redwood Supply LLC",
+  "bank_account_number": "4400555111",
+  "bank_code": "021000021",
+  "website": "https://www.redwood.example",
+  "documents": {
+    "tax_document": {
+      "filename": "redwood_tax.pdf",
+      "file_type": "pdf",
+      "size_bytes": 184320,
+      "declared_type": "tax_document"
+    },
+    "registration": {
+      "filename": "redwood_registration.pdf",
+      "file_type": "pdf",
+      "size_bytes": 220160,
+      "declared_type": "registration"
+    },
+    "voided_cheque": {
+      "filename": "redwood_cheque.pdf",
+      "file_type": "pdf",
+      "size_bytes": 98304,
+      "declared_type": "voided_cheque"
+    },
+    "passbook": null
+  }
+}

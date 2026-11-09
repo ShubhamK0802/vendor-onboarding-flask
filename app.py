@@ -33,7 +33,8 @@ DOC_SLOTS = {"tax_document": "Tax document (GST certificate, W-9 or German VAT r
              "voided_cheque": "Voided cheque", "passbook": "Passbook page (alternative to a voided cheque)"}
 LEVELS = {1: "Vendor can fix", 2: "Needs review", 3: "Contradiction"}
 COLOR = {"Approved": "green", "Pending": "orange", "Rejected": "red"}
-SAMPLE_HINTS = {"01_approved_india_clean.json": "submit it twice to see 'already registered'", "06_edge_existing_vendor_changes_bank_account.json": "submit 01 first"}
+SAMPLE_HINTS = {"01_approved_india_clean.json": "submit it twice to see 'already registered'", "06_edge_existing_vendor_changes_bank_account.json": "submit 01 first",
+                 "02b_corrected_incomplete_form.json": "apply again after 02", "03b_corrected_tax_id.json": "apply again after 03", "05b_corrected_identity.json": "apply again after 05"}
 SEEN = defaultdict(list)  # source -> times of its recent submissions (rate limit). ponytail: in memory, like PROGRESS
 PROGRESS = {}  # token -> live progress of one run. ponytail: in-memory, so one worker process; use the database if it must scale out
 HIGH_RISK_BANK_CODES = {"BANK_DETAILS_CHANGED", "DUPLICATE_BANK_ACCOUNT"}

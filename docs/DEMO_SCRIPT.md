@@ -36,6 +36,7 @@ Live app: https://vendor-onboarding-checker.onrender.com  ·  Code and docs: htt
 |---|---|---|
 | 01, submitted twice | Approved, then Already registered | The happy path, plus the exact-repeat case |
 | 02 (edge case 1) | Rejected, with a list of what to fix | Incomplete forms and wrong documents; the vendor applies again |
+| 02b, 03b, 05b | Approved, each after its rejected sample | A rejected vendor applies again with the right data: a new application, a new row on the dashboard, the old rejection stays |
 | 03 (edge case 2) | Rejected | Tax ID wrong for the stated country (one contradiction) |
 | 05 (edge case 3) | Rejected | Two identity contradictions at once |
 | 06 (edge case 4) | Needs review | An existing vendor changes its bank account |

@@ -4,10 +4,10 @@ from checks import (
     check_completeness, check_country, check_formats, check_documents,
     check_identity, check_name_match, check_verification, check_duplicates, check_attempts,
 )
-from config import ALREADY_REGISTERED, FIX, NEEDS_REVIEW, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION, VENDOR_ACTION
+from config import ALREADY_REGISTERED, FIX, NEEDS_REVIEW, NO_RETRY_CODES, RED, REJECT_ON_ITS_OWN, REVIEW, RULE_VERSION, VENDOR_ACTION
 
 
-def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
+def build_vendor_message(status, sub_status, fixes, reject_reasons=(), contradictions=(), can_retry=True):
     if status == "Approved":
         return "You are already registered with us. No new application is needed." if sub_status == ALREADY_REGISTERED else "Your application is approved."
     if status == "Pending" and sub_status == NEEDS_REVIEW:
@@ -16,9 +16,16 @@ def build_vendor_message(status, sub_status, fixes, reject_reasons=()):
         problems = "this problem" if len(fixes) == 1 else "these problems"
         listed = "\n".join(f"{i}. {fix}" for i, fix in enumerate(fixes, 1))
         return f"Your application needs more information. We found {problems}:\n{listed}\nPlease correct {'it' if len(fixes) == 1 else 'these'} and continue this application."
+    parts = []
     if reject_reasons:
-        return "Your application is rejected because " + "; ".join(reject_reasons) + "."
-    return "Your application is rejected."
+        parts.append("Your application is rejected because " + "; ".join(reject_reasons) + ".")
+    if contradictions:  # name the details that disagree, in the same plain words the vendor sees everywhere else
+        lead = "Some of the details you entered also do not agree with each other:" if reject_reasons else "Your application is rejected because some of the details you entered do not agree with each other:"
+        parts.append(lead + "\n" + "\n".join(f"{i}. {item}" for i, item in enumerate(contradictions, 1)))
+    if not parts:
+        parts.append("Your application is rejected.")
+    parts.append("This application is now closed." + (" Please check these details against your registration documents and submit a new application." if can_retry else ""))
+    return "\n".join(parts)
 
 
 def decide(stage_results):
@@ -40,15 +47,15 @@ def decide(stage_results):
     else:
         status, sub_status = "Pending", VENDOR_ACTION
 
-    if status == "Rejected" and red_flags >= 2:
-        reject_reasons.append("the details you gave contradict each other")
+    contradictions = [f["message"] for f in findings if f["level"] == RED] if status == "Rejected" and red_flags >= 2 else []
+    can_retry = not any(f["code"] in NO_RETRY_CODES for f in findings)
     fixes = [f["message"] for f in findings if f["level"] in (FIX, RED)]
     reviewer_notes = [f["message"] for f in findings if f["level"] >= REVIEW]
     return {
         "status": status,
         "sub_status": sub_status,
         "findings": findings,
-        "vendor_message": build_vendor_message(status, sub_status, fixes, reject_reasons),
+        "vendor_message": build_vendor_message(status, sub_status, fixes, reject_reasons, contradictions, can_retry),
         "reviewer_notes": reviewer_notes,
     }
 

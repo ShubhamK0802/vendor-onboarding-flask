@@ -174,6 +174,8 @@ REJECT_ON_ITS_OWN = {
     "LOOKALIKE_NAME": "two names you gave look identical but are spelled with look-alike characters (for example a zero for an o)",
     "LOOKALIKE_OF_EXISTING_VENDOR": "your company name could not be accepted",
 }
+# Rejections that never invite a new application (and never explain more than they must).
+NO_RETRY_CODES = {"SANCTIONS_MATCH", "EMBARGOED_BANK_COUNTRY", "LOOKALIKE_OF_EXISTING_VENDOR"}
 # Countries under comprehensive sanctions (simplified: a real deployment uses the current official lists).
 EMBARGOED_COUNTRIES = {"KP", "IR", "SY", "CU"}
 # Repeat attempts concern fresh applications filed after a terminal rejection.

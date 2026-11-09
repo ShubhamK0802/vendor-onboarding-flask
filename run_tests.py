@@ -664,5 +664,16 @@ check(len(rows) == 2 and all(row["status"] == "sent" and row["transport"] == "si
 check(not rows[0]["subject"].startswith("Re:") and rows[1]["subject"].startswith("Re: ") and rows[0]["thread_id"] == rows[1]["thread_id"], "serverless mail: the second message of a thread is a Re: reply, chosen inside the insert")
 store.reset()
 
+# ---- terminal rejections are written for the vendor: they name what disagrees and say what happens next
+two = run_pipeline(CASE["19_reject_two_contradictions"], SEED)["vendor_message"]
+check(two == "Your application is rejected because some of the details you entered do not agree with each other:\n1. The PAN inside your GSTIN differs from the PAN you gave\n"
+      "2. Your PAN is not a company PAN (its 4th letter should be C)\nThis application is now closed. Please check these details against your registration documents and submit a new application.",
+      "vendor message: two contradictions are named in plain words, with what to do next", two)
+check("contradict each other" not in two and "1. " in two and "2. " in two, "vendor message: no vague 'the details contradict each other'")
+sanction = run_pipeline(CASE["21_reject_sanctions_name_match"], SEED)["vendor_message"]
+check(sanction == "Your application is rejected because we are unable to onboard this company.\nThis application is now closed.", "vendor message: a sanctions rejection stays vague and does not invite a new application", sanction)
+cancelled = run_pipeline(CASE["23_reject_cancelled_registration"], SEED)["vendor_message"]
+check("your tax registration is shown as cancelled or inactive" in cancelled and cancelled.endswith("submit a new application."), "vendor message: a fixable hard stop says why and that a new application is possible", cancelled)
+
 print("ALL PASSED" if not failed else f"FAILED: {failed}")
 sys.exit(1 if failed else 0)

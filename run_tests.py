@@ -14,7 +14,7 @@ os.environ["MAIL_WORKER"] = "0"  # the background sender is driven by hand in th
 from decide import parse_submission, run_pipeline
 from config import VENDOR_ACTION
 
-from samples import APEX, CASES, CORRECTED, SAMPLES, SEED, INDIA, american, fresh, indian, make_iban
+from samples import APEX, CASES, SAMPLES, SEED, INDIA, american, fresh, indian, make_iban
 
 store.DB_PATH = os.path.join(tempfile.mkdtemp(), "test.db")
 failed = []
@@ -201,10 +201,10 @@ check(store.load_runs() == [] and store.load_decisions() == [] and len(store.kno
 # ---- the app offers nine samples (one clean vendor, six edge cases and two review cases) and the corrected version of each edge case a vendor can fix
 by_case = {case[0]: case for case in CASES}
 shown = sorted(f[:-5] for f in os.listdir("sample_inputs"))
-check(shown == sorted(file for file, _ in SAMPLES + CORRECTED) and len(SAMPLES) == 9 and len(CORRECTED) == 5, "samples: nine samples and five corrected versions", f"-> {shown}")
-check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Pending", VENDOR_ACTION), ("Pending", VENDOR_ACTION), ("Pending", VENDOR_ACTION), ("Rejected", None), ("Pending", "Needs review"), ("Rejected", None), ("Pending", "Needs review"), ("Pending", "Needs review")],
-      "samples: they cover approved, vendor correction, terminal rejection and reviewer decision")
-for file, case in SAMPLES + CORRECTED:
+check(shown == sorted(file for file, _ in SAMPLES) and len(SAMPLES) == 5, "samples: the app offers 01 plus the four edge cases of the demo", f"-> {shown}")
+check([by_case[case][3:5] for _, case in SAMPLES] == [("Approved", None), ("Pending", VENDOR_ACTION), ("Pending", VENDOR_ACTION), ("Rejected", None), ("Pending", "Needs review")],
+      "samples: they cover approved, vendor correction (twice), terminal rejection and reviewer decision")
+for file, case in SAMPLES:
     with open(f"sample_inputs/{file}.json", encoding="utf-8") as handle:
         check(json.load(handle) == json.loads(json.dumps(by_case[case][1])), f"samples: {file} is the tested case {case}")
 
@@ -455,22 +455,6 @@ check(json.loads(second_request.data)["headers"] == {"In-Reply-To": "<abc123@bre
 client.post("/reset")
 check(b"No messages yet" in client.get("/messages").data and outbox() == [], "messages: empty after a reset")
 
-# ---- the corrected samples, used exactly as a person would: the edge case first, then its fix (all through the web API)
-client.post("/reset")
-for edge, fixed, expected in [("02_edge_incomplete_form_wrong_document", "02b_corrected_incomplete_form_completed", "Approved"), ("03_edge_tax_id_wrong_for_country", "03b_corrected_tax_id_for_country", "Approved"),
-                              ("04_edge_name_nearly_matches_bank_account", "04b_corrected_bank_holder_name_matches", "Approved"),
-                              ("05_edge_identity_fields_contradict", "05b_corrected_identity_fields_consistent", "Approved"),
-                              ("07_edge_lookalike_characters_in_name", "07b_corrected_lookalike_name_spelled_right", "Pending")]:
-    first_run = run_web(mode="sample", sample=edge + ".json")["run_id"]
-    fixed_run = run_web(mode="sample", sample=fixed + ".json")["run_id"]
-    check(run(fixed_run)["final"] == expected, f"corrected sample: {fixed} after {edge[:2]} gives {expected}", run(fixed_run)["final"])
-    check(run(fixed_run)["final"] == "Pending" or run(first_run)["final"] != "Approved", f"corrected sample: {edge[:2]} itself was not approved")
-    check(run(first_run)["vendor_id"] == run(fixed_run)["vendor_id"], f"vendor ID: {edge[:2]} and its fix are the same applicant, so the same vendor ID")
-client.post("/reset")
-alone = run_web(mode="sample", sample="07b_corrected_lookalike_name_spelled_right.json")["run_id"]
-check(run(alone)["final"] == "Approved", "corrected sample: 07b on its own is approved")
-client.post("/reset")
-
 # ---- the vendor message for an incomplete form is plain and specific
 from samples import incomplete_form
 text = run_pipeline(incomplete_form(), [])["vendor_message"]
@@ -501,16 +485,14 @@ name_only = indian("Apex Global Private Limited", "ZZYCA9999Z", "40100999999999"
 check("SAME_NAME_DIFFERENT_COMPANY_ID" not in [f["code"] for f in run_pipeline(name_only, onboarded)["findings"]], "the same name alone is not enough: many unrelated companies share a name")
 store.reset()
 
-# ---- the two review samples, used as a person would: submit 01 first, then the sample
-for review_sample, expected_code in [("08_review_registered_company_changes_name_and_details", "DUPLICATE_KEY_NEW_NAME"), ("09_review_same_name_different_company_id", "SAME_NAME_DIFFERENT_COMPANY_ID")]:
-    client.post("/reset")
-    run_web(mode="sample", sample="01_approved_india_clean.json")
-    reviewed = run_web(mode="sample", sample=review_sample + ".json")["run_id"]
-    check(run(reviewed)["final"] == "Pending" and run(reviewed)["waiting_on"] == "Reviewer" and expected_code in run(reviewed)["codes"] and f">{reviewed}</a>" in client.get("/review").data.decode(),
-          f"review sample: {review_sample[:2]} goes to the reviewer desk with {expected_code}")
-    check("Same:" in " ".join(f["message"] for f in run(reviewed)["findings"]) and "Different:" in " ".join(f["message"] for f in run(reviewed)["findings"]),
-          f"review sample: {review_sample[:2]} shows the reviewer what is the same and what differs")
-    check("under review" in client.get(f"/run/{reviewed}").data.decode() and run(reviewed)["vendor_id"] not in client.get(f"/run/{reviewed}").data.decode(), f"review sample: {review_sample[:2]} tells the vendor only 'under review'")
+# ---- the payment-fraud sample (06), used as a person would: submit 01 first, then 06
+client.post("/reset")
+run_web(mode="sample", sample="01_approved_india_clean.json")
+reviewed = run_web(mode="sample", sample="06_edge_existing_vendor_changes_bank_account.json")["run_id"]
+check(run(reviewed)["final"] == "Pending" and run(reviewed)["waiting_on"] == "Reviewer" and "BANK_DETAILS_CHANGED" in run(reviewed)["codes"] and f">{reviewed}</a>" in client.get("/review").data.decode(),
+      "sample 06: goes to the reviewer desk with BANK_DETAILS_CHANGED")
+check("Same:" in " ".join(f["message"] for f in run(reviewed)["findings"]) and "Different:" in " ".join(f["message"] for f in run(reviewed)["findings"]), "sample 06: shows the reviewer what is the same and what differs")
+check("under review" in client.get(f"/run/{reviewed}").data.decode() and run(reviewed)["vendor_id"] not in client.get(f"/run/{reviewed}").data.decode(), "sample 06: tells the vendor only 'under review'")
 client.post("/reset")
 
 # ---- the repeat-attempts stage is internal: recorded for staff, never shown to the vendor
@@ -529,8 +511,7 @@ client.post("/reset")
 # ---- an onboarded company and review cases are not 'attempts': no double flag
 store.reset()
 seen_codes = []
-for sample_name in ["01_approved_india_clean", "06_edge_existing_vendor_changes_bank_account", "08_review_registered_company_changes_name_and_details",
-                    "08_review_registered_company_changes_name_and_details", "09_review_same_name_different_company_id"]:
+for sample_name in ["01_approved_india_clean", "06_edge_existing_vendor_changes_bank_account", "06_edge_existing_vendor_changes_bank_account"]:
     history_ = store.load_runs()
     with open(f"sample_inputs/{sample_name}.json", encoding="utf-8") as handle_:
         data_ = json.load(handle_)

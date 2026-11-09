@@ -26,24 +26,21 @@ Live app: https://vendor-onboarding-checker.onrender.com  ·  Code and docs: htt
 | **1:00 to 1:30 Workflow** | Tab 2: WORKFLOW.md, scroll the first two diagrams | "Every application has one clear owner. Clean evidence is approved. A correctable gap stays pending with the vendor. Uncertain or high-risk evidence stays pending with a reviewer. Only a hard stop, two contradictions, or a reviewer rejection is terminal." |
 | **1:30 to 2:15 Happy path** | Tab 1. Samples tab, choose **01 clean vendor**, Submit | "First, a clean vendor. Watch the stages appear live on the right as each one runs. All pass. Approved. The vendor gets a plain message. And if the same vendor applies again with nothing new..." (submit 01 again) "...it says already registered: nothing is created twice." |
 | **2:15 to 3:10 Edge case 1: incomplete form** | Choose **02 incomplete form, wrong document**, Submit; click **Correct application** | "This is not a rejection. It is pending with the vendor, with a numbered list and a prefilled correction form. Existing documents are retained, the correction becomes a new revision of the same application, and every check runs again." |
-| **3:10 to 3:50 Edge case 2: look-alike** | Choose **07 look-alike characters**, Submit | "A subtler one: the bank account holder is spelled Gl0bex with a zero. It looks like Globex. A typo is rarely made only of look-alike swaps, so this is rejected outright, and the vendor is told neutrally. Names like 34square are still fine, because I only compare names with each other." |
-| **3:50 to 4:30 Review case** | Choose **08 registered company, new name and details**, Submit; then open **Reviewer desk** | "Third: a company that is already onboarded applies again with the same tax ID but a new name, bank account and phone. This is the classic payment-fraud pattern, so a person decides. The vendor only sees 'under review'. On the reviewer desk I see what is the same and what differs." (point at the note) "I take it, give a reason, and approve." (click Take, type reason, Approve) |
+| **3:10 to 3:50 Edge cases 2 and 3: identity contradictions** | Choose **03 tax ID belongs to another country**, Submit; then **05 two identity contradictions**, Submit | "A US company with an Indian GSTIN. One contradiction may be a mistake, so it stays open for correction. Sample 05 has two identity contradictions, which a single typo cannot explain, so that one is terminally rejected." |
+| **3:50 to 4:30 Edge case 4: bank-account change** | Submit **01** first, then choose **06 existing vendor changes bank account**, Submit; open **Reviewer desk** | "The most important payment-fraud case. An onboarded vendor suddenly changes its bank account. It cannot be auto-approved. A reviewer takes the case, sees what is the same and what differs, and the server blocks approval until the reviewer records a trusted-contact callback or independent bank confirmation." |
 | **4:30 to 4:50 Dashboard and messages** | **Dashboard**, then **Messages** | "The dashboard shows every run: history, status, reasons. Messages shows what the vendor was sent, one thread per application. Mail is simulated here, the fake addresses make that safe, but the outbox and sender are real." |
 | **4:50 to 5:00 Close** | Dashboard or About page | "Limits, stated openly: the registry and sanctions list are demo data, document contents are not read, and this demo has no staff authentication. Next I would plug in real registries, bank ownership verification and production access controls." |
 
-## Edge cases available (pick up to three; the video needs at least one)
+## Samples in the app (01 plus the edge cases the video talks about)
 | Sample | Result | Why it matters |
 |---|---|---|
-| 02, then 02b | Vendor action required; corrected is Approved | Incomplete forms and wrong documents, and that the correction loop works |
-| 03, then 03b | Vendor action required; corrected is Approved | Tax ID wrong for the stated country |
-| 04, then 04b | Vendor action required; corrected is Approved | Bank holder name nearly matches the company |
-| 05, then 05b | Rejected (contradictions); corrected is Approved | Cross-checking fields |
-| 06 | Needs review | Existing vendor changes its bank account |
-| 07 | Rejected outright | Look-alike characters |
-| 08 | Needs review | Registered ID, new name and details |
-| 09 | Needs review | Same name and address, different company ID |
+| 01, submitted twice | Approved, then Already registered | The happy path, plus the exact-repeat case |
+| 02 (edge case 1) | Vendor action required; use Correct application | Incomplete forms and wrong documents, and the correction loop |
+| 03 (edge case 2) | Vendor action required | Tax ID wrong for the stated country (one contradiction) |
+| 05 (edge case 3) | Rejected | Two identity contradictions at once |
+| 06 (edge case 4) | Needs review | An existing vendor changes its bank account |
 
-Order matters: **submit 01 first** (06, 08 and 09 compare against Apex Global once it is approved).
+Order matters: **submit 01 first** (06 compares against Apex Global once it is approved).
 
 ## Recording tips
 - Use any screen recorder; no editing needed. Windows: **Xbox Game Bar** (Win+G) or **OBS Studio** (free) or **Loom**. Record the browser window and your mic.

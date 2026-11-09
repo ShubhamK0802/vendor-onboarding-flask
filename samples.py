@@ -155,28 +155,15 @@ CASES = [
 
 # The samples in the app: one clean vendor, six edge cases and two review cases: five named in the Zamp brief (or its payment-fraud risk) and one look-alike trick.
 # (sample file, the case in CASES it is written from)
+# The samples in the app: the happy path (01, and submitting it twice shows "already registered") and the four edge cases the demo video talks about
+# (02, 03, 05, 06). CASES above is the larger rule matrix the tests use; it is not shown in the app.
+# (sample file, the case in CASES it is written from)
 SAMPLES = [
-    ("01_approved_india_clean", "01_approved_india_clean"),                                                 # the happy path
-    ("02_edge_incomplete_form_wrong_document", "25_fix_incomplete_form_with_wrong_document"),               # "incomplete forms", "the wrong documents": a numbered list of what to send
-    ("03_edge_tax_id_wrong_for_country", "07_fix_us_company_with_indian_gstin"),                            # "the tax ID format is wrong for the country they claim"
-    ("04_edge_name_nearly_matches_bank_account", "09_fix_near_miss_name"),                                  # the vendor corrects the open application
-    ("05_edge_identity_fields_contradict", "19_reject_two_contradictions"),                                 # "subtle inconsistencies when you cross-reference the fields": rejected
-    ("06_edge_existing_vendor_changes_bank_account", "11_review_existing_vendor_changes_bank_account"),     # "payment fraud": a reviewer must verify it; submit 01 first
-    ("07_edge_lookalike_characters_in_name", "26_reject_lookalike_name"),                                   # "Gl0bex" against "Globex": a zero for an o: rejected outright
-    ("08_review_registered_company_changes_name_and_details", "33_review_registered_id_new_name_and_details"),  # same company ID as an onboarded vendor, new name and details: a reviewer; submit 01 first
-    ("09_review_same_name_different_company_id", "34_review_same_name_different_company_id"),               # same name and address as an onboarded vendor, different company ID: a reviewer; submit 01 first
-]
-
-
-# The corrected version of each edge case a vendor can fix, so you can see that sending the right data works.
-# 06 has none: an existing vendor changing its bank account can only be settled by a reviewer, whatever the vendor sends.
-# 07 is terminally rejected because look-alike characters are a serious signal; a later fresh application goes to a reviewer.
-CORRECTED = [
-    ("02b_corrected_incomplete_form_completed", "28_corrected_incomplete_form"),
-    ("03b_corrected_tax_id_for_country", "29_corrected_tax_id_for_country"),
-    ("04b_corrected_bank_holder_name_matches", "30_corrected_bank_holder_name"),
-    ("05b_corrected_identity_fields_consistent", "31_corrected_identity_fields"),
-    ("07b_corrected_lookalike_name_spelled_right", "32_corrected_lookalike_name"),
+    ("01_approved_india_clean", "01_approved_india_clean"),                                                 # the happy path; submit it twice to see "already registered"
+    ("02_edge_incomplete_form_wrong_document", "25_fix_incomplete_form_with_wrong_document"),               # edge case: "incomplete forms", "the wrong documents": a numbered list, then a correction
+    ("03_edge_tax_id_wrong_for_country", "07_fix_us_company_with_indian_gstin"),                            # edge case: "the tax ID format is wrong for the country they claim"
+    ("05_edge_identity_fields_contradict", "19_reject_two_contradictions"),                                 # edge case: two identity contradictions at once cannot be a typo: rejected
+    ("06_edge_existing_vendor_changes_bank_account", "11_review_existing_vendor_changes_bank_account"),     # edge case: "payment fraud": a reviewer must verify it; submit 01 first
 ]
 
 
@@ -185,7 +172,7 @@ def write_samples():
     for name in os.listdir("sample_inputs"):
         os.remove(os.path.join("sample_inputs", name))
     by_name = {case[0]: case for case in CASES}
-    for file_name, case_name in SAMPLES + CORRECTED:
+    for file_name, case_name in SAMPLES:
         with open(f"sample_inputs/{file_name}.json", "w", encoding="utf-8") as handle:
             json.dump(by_name[case_name][1], handle, indent=2)
     registry = {"_note": "SIMULATED tax registry for the demo. A real deployment calls the tax authorities (GST portal, IRS TIN matching, EU VIES).", "IN": {}, "US": {}, "DE": {}}
@@ -201,4 +188,4 @@ def write_samples():
 
 if __name__ == "__main__":
     write_samples()
-    print(f"{len(SAMPLES)} samples + {len(CORRECTED)} corrected versions, registry.json and sanctions.json written")
+    print(f"{len(SAMPLES)} samples, registry.json and sanctions.json written")

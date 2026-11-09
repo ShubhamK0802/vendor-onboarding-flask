@@ -27,15 +27,13 @@ Full rules: [docs/RULE_BOOK.md](docs/RULE_BOOK.md). Canonical flow: [docs/WORKFL
 
 | Sample | Expected result |
 |---|---|
-| 01 clean vendor | Approved; repeat is Already registered |
-| 02 incomplete form, wrong document | Vendor action required; 02b is Approved |
-| 03 tax ID belongs to another country | Vendor action required; 03b is Approved |
-| 04 bank-holder name nearly matches | Vendor action required; 04b is Approved |
-| 05 two identity contradictions | Rejected; a later fresh 05b is Approved |
-| 06 existing vendor changes bank account | Needs review; independent verification required to approve |
-| 07 look-alike characters (Gl0bex) | Rejected; a later clean application is reviewed because of the serious earlier rejection |
-| 08 same registered ID, new name/details | Needs review with same/different comparison |
-| 09 same name/address, different ID | Needs review with same/different comparison |
+| 01 clean vendor | Approved. Submit it a second time: Already registered (the happy path) |
+| 02 incomplete form, wrong document | Vendor action required, with a numbered list; use **Correct application** (edge case 1) |
+| 03 US company with an Indian GSTIN | Vendor action required: one contradiction may be a typo (edge case 2) |
+| 05 two identity contradictions | Rejected: two at once cannot be a typo (edge case 3) |
+| 06 existing vendor changes its bank account | Needs review; independent verification required to approve. Submit 01 first (edge case 4, the payment-fraud case) |
+
+The app offers only these five samples: the happy path and the edge cases the demo video talks about. The larger rule matrix lives in the tests (`samples.CASES`).
 
 `demo_form_submission/` contains a clean form payload and four fictional PDFs.
 

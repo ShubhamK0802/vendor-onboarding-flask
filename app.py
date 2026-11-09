@@ -354,20 +354,23 @@ def review_decision(run_id):
 @app.get("/dashboard")
 def dashboard():
     runs = store.load_runs()
+    latest = {r["vendor_id"] or r["run_id"]: r for r in runs}  # runs are oldest first: the last application of a vendor is where it stands now
     current = runs
     total = len(current)
+    retried = sum(r["final"] == "Approved" and any(e["final"] == "Rejected" for e in r["earlier"]) for r in latest.values())
     pct = lambda n: f"{n / total:.0%}" if total else "0%"
     count = lambda **kw: sum(all(r[k] == v for k, v in kw.items()) for r in current)
     handled = sum(r["sub_status"] != NEEDS_REVIEW for r in current)
     metrics = [("Sorted without a reviewer", handled, pct(handled), "The rules approved or rejected it with a clear reason"),
                ("Approved automatically", count(final="Approved", decided_by="Automatic"), pct(count(final="Approved", decided_by="Automatic")), "The rules approved it with no human involved"),
+               ("Rejected, then approved", retried, f"{retried / len(latest):.0%} of vendors" if latest else "0%", "A vendor whose application was rejected, then approved on a new application"),
                ("Sent to a reviewer", count(sub_status=NEEDS_REVIEW), pct(count(sub_status=NEEDS_REVIEW)), "The rules could not decide, so a reviewer must"),
                ("Rejected", count(final="Rejected"), pct(count(final="Rejected")), "Wrong or missing input, a hard-stop rule or a reviewer decision closed it; the vendor can file a new application")]
     show = request.args.get("show", "All")
     history = [r for r in reversed(runs) if show in ("All", r["final"])]
     return render_template("dashboard.html", runs=runs, total=total, metrics=metrics, show=show, history=history,
                            with_reviewer=count(waiting_on="Reviewer"),
-                           outcomes=Counter(outcome(r) for r in current).most_common(),
+                           outcomes=Counter(outcome(r) for r in latest.values()).most_common(), vendors=len(latest),
                            top=Counter(c for r in current for c in set(r["codes"])).most_common(),
                            picked=next((r for r in runs if r["run_id"] == request.args.get("run")), None))
 

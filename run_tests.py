@@ -671,5 +671,16 @@ check(sanction == "Your application is rejected because we are unable to onboard
 cancelled = run_pipeline(CASE["23_reject_cancelled_registration"], SEED)["vendor_message"]
 check("your tax registration is shown as cancelled or inactive" in cancelled and cancelled.endswith("submit a new application."), "vendor message: a fixable hard stop says why and that a new application is possible", cancelled)
 
+# ---- dashboard: a vendor rejected once and approved on a new application counts once, as approved, and staff see the earlier rejection
+client.post("/reset")
+rej = run_web(mode="sample", sample="02_edge_incomplete_form_wrong_document.json")
+ok = run_web(mode="sample", sample="02b_corrected_incomplete_form.json")
+check(run(rej["run_id"])["vendor_id"] == run(ok["run_id"])["vendor_id"] and run(ok["run_id"])["earlier"] == [{"run_id": rej["run_id"], "final": "Rejected"}],
+      "dashboard: the corrected application keeps the vendor ID and lists the earlier rejection")
+page = client.get("/dashboard").data.decode()
+check("Rejected, then approved" in page and "(1 vendors, latest application each)" in page and f"Earlier applications from this vendor" in client.get(f"/dashboard?run={ok['run_id']}").data.decode(),
+      "dashboard: counts vendors by their latest application and shows rejected-then-approved")
+client.post("/reset")
+
 print("ALL PASSED" if not failed else f"FAILED: {failed}")
 sys.exit(1 if failed else 0)

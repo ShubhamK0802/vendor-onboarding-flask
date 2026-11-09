@@ -15,7 +15,7 @@
 </div>
 
 <div class="grid">
-  <section class="card"><h2>Where vendors stand now</h2>
+  <section class="card"><h2>Where vendors stand now <span class="muted">({{ vendors }} vendors, latest application each)</span></h2>
     <table><thead><tr><th>Status</th><th>Vendors</th></tr></thead><tbody>{% for name, n in outcomes %}<tr><td>{{ name }}</td><td>{{ n }}</td></tr>{% endfor %}</tbody></table></section>
   <section class="card"><h2>Top reasons for non-approval</h2>
     {% if top %}<table><thead><tr><th>Reason</th><th>Submissions</th></tr></thead><tbody>{% for code, n in top %}<tr><td>{{ reason_labels.get(code, code) }}</td><td>{{ n }}</td></tr>{% endfor %}</tbody></table>

@@ -331,8 +331,11 @@ def load_runs():
         run["findings"] = run["decision"].get("findings", [])
         run["codes"] = [f["code"] for f in run["findings"]]
         run.update(decision_by={"id": d_id, "run_id": run["run_id"], "decision": d_decision, "note": d_note, "reviewer": d_reviewer, "ts": d_ts} if d_id is not None else None)
+    seen = {}  # vendor ID -> the vendor's earlier applications, so staff see "this follows a rejected one"
     for run in runs:
+        run["earlier"] = list(seen.get(run["vendor_id"], ())) if run["vendor_id"] else []
         run.update(final_state(run))
+        seen.setdefault(run["vendor_id"], []).append({"run_id": run["run_id"], "final": run["final"]})
         run["decided_by"] = run["decision_by"]["reviewer"] if run["decision_by"] and run["decision_by"]["decision"] in ("Approved", "Rejected") else "Automatic"
     return runs
 

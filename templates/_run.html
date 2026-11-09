@@ -39,5 +39,6 @@
     {% else %}<p class="muted">No findings.</p>{% endif %}
   </details>{% endif %}
 
+  {% if run.earlier and not vendor_view %}<p class="note"><b>Earlier applications from this vendor:</b> {% for e in run.earlier %}{{ e.run_id }} ({{ e.final }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
   <p class="muted">Submission {{ run.run_id }}{% if run.vendor_id and not vendor_view %} · Vendor {{ run.vendor_id }}{% endif %} · rule version {{ run.rule_version }}</p>
 </div>

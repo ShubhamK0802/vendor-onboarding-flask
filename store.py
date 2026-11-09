@@ -135,10 +135,15 @@ class Handle:
         _shared["conn"].__enter__()
         return self
 
-    def __exit__(self, *exc):
-        started = time.perf_counter()
+    def __exit__(self, exc_type, exc, traceback):
+        started, conn = time.perf_counter(), _shared["conn"]
         try:
-            return _shared["conn"].__exit__(*exc)
+            if _shared["postgres"]:
+                # psycopg's own `with conn:` CLOSES the connection on exit (sqlite3's does not). This connection is shared, so closing it made the
+                # next request reconnect and re-run the schema: about 11 seconds on a remote database. Commit or roll back and keep it open.
+                conn.rollback() if exc_type else conn.commit()
+                return False
+            return conn.__exit__(exc_type, exc, traceback)
         finally:
             TIMING["commit_ms"] += (time.perf_counter() - started) * 1000
 
@@ -159,9 +164,12 @@ def connect():
                 import psycopg
                 from psycopg.rows import dict_row
                 conn = psycopg.connect(psycopg_url(POSTGRES_URL), row_factory=dict_row, prepare_threshold=None)
-                for statement in POSTGRES_SCHEMA.split(";"):
-                    if statement.strip():
-                        conn.execute(statement)
+                present = conn.execute("SELECT count(*) AS n FROM information_schema.tables WHERE table_schema = current_schema() AND table_name IN "
+                                       "('runs','decisions','docs','vendor_ids','run_vendor','outbox','claims','vendors')").fetchone()["n"]
+                if present < 8:  # create the tables only the first time: each statement is a network round trip
+                    for statement in POSTGRES_SCHEMA.split(";"):
+                        if statement.strip():
+                            conn.execute(statement)
                 conn.commit()
             else:
                 conn = sqlite3.connect(DB_PATH, check_same_thread=False)

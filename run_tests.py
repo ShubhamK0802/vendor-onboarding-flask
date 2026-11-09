@@ -628,5 +628,33 @@ header = client.post("/api/submit", data={"mode": "sample", "sample": "01_approv
 check(header.startswith("db;dur=") and "commit;dur=" in header and "connect;dur=" in header and "statements" in header, "server timing: submit reports what the database cost", header)
 store.reset()
 
+# ---- Postgres: leaving a write block must commit but NOT close the shared connection (psycopg's own context manager closes it)
+class FakePostgres:
+    """Behaves like a psycopg connection where it matters here: its context manager closes it."""
+    def __init__(self):
+        self.closed, self.log = False, []
+    def commit(self): self.log.append("commit")
+    def rollback(self): self.log.append("rollback")
+    def __enter__(self): return self
+    def __exit__(self, *exc): self.closed = True
+
+saved = dict(store._shared)
+fake = FakePostgres()
+store._shared.update(conn=fake, postgres=True)
+try:
+    with store.Handle():
+        pass
+    committed_open = (list(fake.log), fake.closed)
+    try:
+        with store.Handle():
+            raise ValueError("boom")
+    except ValueError:
+        pass
+    rolled_back_open = (list(fake.log), fake.closed)
+finally:
+    store._shared.update(saved)
+check(committed_open == (["commit"], False), "postgres: a successful write block commits and leaves the shared connection open", committed_open)
+check(rolled_back_open == (["commit", "rollback"], False), "postgres: a failed write block rolls back and leaves the shared connection open", rolled_back_open)
+
 print("ALL PASSED" if not failed else f"FAILED: {failed}")
 sys.exit(1 if failed else 0)

@@ -656,5 +656,19 @@ finally:
 check(committed_open == (["commit"], False), "postgres: a successful write block commits and leaves the shared connection open", committed_open)
 check(rolled_back_open == (["commit", "rollback"], False), "postgres: a failed write block rolls back and leaves the shared connection open", rolled_back_open)
 
+# ---- the Onboard page: Samples and JSON file are separate tabs, and an uploaded file is really used (it used to be ignored in favour of the selected sample)
+home = client.get("/").get_data(as_text=True)
+json_form = home[home.index('id="tab-json"'):]
+json_form = json_form[:json_form.index("</form>")]
+sample_form = home[home.index('id="tab-sample"'):home.index('id="tab-json"')]
+check('data-tab="tab-sample">Samples<' in home and 'data-tab="tab-json">JSON file<' in home, "tabs: Vendor form, Samples and JSON file")
+check("Select the JSON file to upload" in json_form and 'type="file"' in json_form and 'name="sample"' not in json_form, "tabs: the JSON file tab only asks for the file to upload")
+check('name="sample"' in sample_form and 'type="file"' not in sample_form, "tabs: the Samples tab only has the sample chooser")
+mine_json = dict(CASE["14_review_shared_mobile_number"], company_name="Uploaded Through The JSON Tab Private Limited", bank_account_name="Uploaded Through The JSON Tab Private Limited")
+uploaded = run_web(mode="json", json_file=(io.BytesIO(json.dumps(mine_json).encode()), "mine.json"))["run_id"]
+check(run(uploaded)["company"] == "Uploaded Through The JSON Tab Private Limited", "tabs: a file uploaded on the JSON file tab is the one that is processed")
+check(client.post("/api/submit", data={"mode": "json"}, content_type="multipart/form-data").get_json()["error"] == "Choose a JSON file first", "tabs: submitting the JSON tab with no file says to choose one")
+store.reset()
+
 print("ALL PASSED" if not failed else f"FAILED: {failed}")
 sys.exit(1 if failed else 0)

@@ -60,8 +60,8 @@ def enqueue(conn, run, event, headline, body):
                  (root, run["run_id"], event, to, subject, body, headline, now(), "queued" if to else "noaddr"))
 
 
-def enqueue_verdict(run_id):
-    run = get_run(run_id)
+def enqueue_verdict(run_id, run=None):
+    run = run or get_run(run_id)  # the caller usually has it already: loading every run again is several round trips
     with closing(store.connect()) as conn, conn:
         enqueue(conn, run, "verdict", HEADLINES[(run["status"], run["sub_status"])], run["decision"]["vendor_message"])
     if os.environ.get("VERCEL"):

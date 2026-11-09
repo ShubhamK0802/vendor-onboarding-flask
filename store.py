@@ -50,7 +50,12 @@ def new_vendor_id(country):
     return "V" + (country if isinstance(country, str) and len(country) == 2 and country.isalpha() and country.isupper() else "XX") + uuid.uuid4().hex[:6].upper()
 
 
-_lock, _shared = threading.RLock(), {"target": None, "conn": None, "postgres": False}
+_lock, _shared = threading.RLock(), {"target": None, "conn": None, "postgres": False, "version": 0}
+
+
+def version():
+    """Bumped by every write in this process; lets callers cache cheap read-only summaries."""
+    return _shared["version"]
 
 
 def using_postgres():
@@ -137,17 +142,21 @@ def connect():
                 conn.row_factory = sqlite3.Row
                 conn.executescript(SQLITE_SCHEMA)
             _shared.update(target=target, conn=conn, postgres=using_postgres())
-        conn = _shared["conn"]
-        if not conn.execute("SELECT 1 FROM vendors").fetchone():  # an empty master is re-filled with the vendors that were already on file
-            values = [(v["company_key"], v["company_name"], v["bank_account_number"], v["mobile"], v["email"], v["address"])
-                      for v in VENDORS_ON_FILE]
-            Handle().executemany("INSERT OR IGNORE INTO vendors VALUES (?,?,?,?,?,?)", values)
-            Handle().executemany("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", [(v["company_key"], new_vendor_id(v["country"])) for v in VENDORS_ON_FILE])
-            conn.commit()
+            seed()  # once per connection, not once per call: on a remote database every statement is a network round trip
         return Handle()
     except BaseException:
         _lock.release()
         raise
+
+
+def seed():
+    """Fill an empty vendor master with the vendors that were already on file."""
+    conn = _shared["conn"]
+    if not conn.execute("SELECT 1 FROM vendors").fetchone():
+        values = [(v["company_key"], v["company_name"], v["bank_account_number"], v["mobile"], v["email"], v["address"]) for v in VENDORS_ON_FILE]
+        Handle().executemany("INSERT OR IGNORE INTO vendors VALUES (?,?,?,?,?,?)", values)
+        Handle().executemany("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", [(v["company_key"], new_vendor_id(v["country"])) for v in VENDORS_ON_FILE])
+        conn.commit()
 
 
 def query(sql, args=()):
@@ -179,8 +188,9 @@ def save_run(submission, decision, seconds, files=None, same_as=None, parent_id=
         conn.executemany("INSERT INTO docs VALUES (?,?,?,?)", [(run_id, slot, name, data) for slot, (name, data) in (files or {}).items()])
         vendor = vendor_for(conn, submission, key, same_as)  # same_as: an earlier run by the same applicant (any status)
         conn.execute("INSERT INTO run_vendor VALUES (?,?)", (run_id, vendor))
-        if key:
+        if key and not using_postgres():  # on Postgres vendor_for already inserted it
             conn.execute("INSERT OR IGNORE INTO vendor_ids VALUES (?,?)", (key, vendor))
+    _shared["version"] += 1
     return run_id
 
 
@@ -254,6 +264,8 @@ def reset():
     with closing(connect()) as conn, conn:
         for table in ("runs", "decisions", "docs", "vendors", "claims", "vendor_ids", "run_vendor", "outbox"):
             conn.execute(f"DELETE FROM {table}")
+        seed()  # restored at once, so no later call has to check
+    _shared["version"] += 1
 
 
 def final_state(run):

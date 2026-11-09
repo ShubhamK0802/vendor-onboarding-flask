@@ -121,10 +121,14 @@ app.jinja_env.globals.update(submitted=submitted, effect=effect, badge=badge, re
                              rule_version=RULE_VERSION, high_risk_bank_codes=HIGH_RISK_BANK_CODES, verification_methods=VERIFICATION_METHODS)
 
 
+NAV = {"version": -1, "at": 0.0, "count": 0}  # the reviewer-queue badge: counted at most every few seconds, not on every page
+
+
 @app.context_processor
 def nav_counts():
-    runs = store.load_runs()
-    return {"n_reviewer": sum(r["waiting_on"] == "Reviewer" for r in runs)}
+    if NAV["version"] != store.version() or time.time() - NAV["at"] > 5:
+        NAV.update(version=store.version(), at=time.time(), count=sum(r["waiting_on"] == "Reviewer" for r in store.load_runs()))
+    return {"n_reviewer": NAV["count"]}
 
 
 def get_run(run_id):
@@ -201,10 +205,13 @@ def worker(token, submission, files, parent_id=None):
         # Only strong links count here (a shared name or file is a hint for the reviewer, not proof of identity).
         same_as = parent_id or next((r["run_id"] for r in reversed(history) if {"company ID", "bank account", "phone", "email"} & set(link_reasons(submission, r))), None)
         progress["run_id"] = store.save_run(submission, build_decision(stages), seconds, files=files, same_as=same_as, parent_id=parent_id)
-        mailer.enqueue_verdict(progress["run_id"])  # the vendor is told the verdict; a background worker sends it
+        run = get_run(progress["run_id"])
+        mailer.enqueue_verdict(progress["run_id"], run)  # the vendor is told the verdict; a background worker sends it
     except Exception as error:  # never leave the page spinning
         progress["error"] = f"Something went wrong: {error}"
+        run = None
     progress["done"] = True
+    return run
 
 
 def too_many():
@@ -245,9 +252,9 @@ def api_submit():
     PROGRESS[token] = {"stages": [], "done": False, "run_id": None, "error": None}
     parent_id = (revision["application_id"] if revision else None)
     if os.environ.get("VERCEL"):
-        worker(token, submission, files, parent_id)
+        run = worker(token, submission, files, parent_id)
         progress = PROGRESS[token]
-        result_html = render_template("_run.html", run=get_run(progress["run_id"]), vendor_view=True) if progress["run_id"] else ""
+        result_html = render_template("_run.html", run=run, vendor_view=True) if run else ""
         return jsonify(token=token, progress=progress, result_html=result_html)
     threading.Thread(target=worker, args=(token, submission, files, parent_id), daemon=True).start()
     return jsonify(token=token)

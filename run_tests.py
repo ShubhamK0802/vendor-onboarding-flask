@@ -601,5 +601,27 @@ check(codes == [200, 200, 429], "rate limit: the third submission in an hour fro
 app.app.config["RATE_LIMIT"] = 10 ** 6
 client.post("/reset")
 
+# ---- round-trip budget: on a remote database (Postgres on Vercel) every statement is a network call, so a submit and a page load must stay cheap
+time.sleep(1.0)  # let any worker threads started by the earlier tests finish, so only this submit is counted
+store.reset()
+store.query("SELECT 1 FROM vendors")
+counted = []
+store._shared["conn"].set_trace_callback(lambda statement: counted.append(" ".join(statement.strip().split()[:4]).upper()))
+os.environ["VERCEL"] = "1"
+try:
+    run_web(mode="sample", sample="02_edge_incomplete_form_wrong_document.json")
+    submit_statements = len([x for x in counted if x not in ("BEGIN", "COMMIT")])
+    counted.clear()
+    client.get("/about")
+    client.get("/about")
+    page_statements = len([x for x in counted if x not in ("BEGIN", "COMMIT")])
+finally:
+    os.environ.pop("VERCEL", None)
+    store._shared["conn"].set_trace_callback(None)
+check(submit_statements <= 24, "round trips: a submit makes at most 24 SQL statements (it was about 43)", submit_statements)
+check(page_statements <= 3, "round trips: two page loads make at most 3 statements (the nav badge count is cached)", page_statements)
+store.reset()
+check(len(store.known_vendors([])) == 1, "round trips: reset restores the vendors on file at once, with no per-call check")
+
 print("ALL PASSED" if not failed else f"FAILED: {failed}")
 sys.exit(1 if failed else 0)

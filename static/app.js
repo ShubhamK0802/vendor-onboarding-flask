@@ -19,30 +19,44 @@ if ($('#stages')) {
     const data = new FormData(form);
     data.set('mode', form.dataset.mode);
     $('#error').hidden = true;
-    const reply = await fetch('/api/submit', { method: 'POST', body: data });
-    const started = await reply.json();
-    if (!reply.ok) { $('#error').textContent = started.error; $('#error').hidden = false; return; }
-
     buttons.forEach((b) => (b.disabled = true));
     $('#placeholder').hidden = true;
     $('#outcome').innerHTML = '';
-    $('#result-title').textContent = 'Verifying vendor…';
-    let progress = started.progress || null;
-    for (;;) {
-      if (!progress) progress = await (await fetch(`/api/progress/${started.token}`)).json();
-      show(progress.stages);
-      if (progress.done) {
-        if (progress.error) { $('#outcome').textContent = progress.error; $('#result-title').textContent = 'Verification progress'; }
-        else {
-          $('#outcome').innerHTML = started.result_html || await (await fetch(`/run/${progress.run_id}`)).text();
-          $('#result-title').textContent = 'Result';
-        }
-        break;
+    $('#stages').innerHTML = '<li><span class="dot skipped">…</span><div><b>Submitting application</b> <span class="muted">please wait; the first demo request can take a few seconds</span></div></li>';
+    $('#result-title').textContent = 'Starting verification…';
+
+    try {
+      const reply = await fetch('/api/submit', { method: 'POST', body: data });
+      const started = await reply.json();
+      if (!reply.ok) throw new Error(started.error || 'The application could not be submitted');
+
+      $('#result-title').textContent = 'Verifying vendor…';
+      let progress = started.progress || null;
+      if (progress && progress.stages.length) {  // the whole run came back in one response (serverless host): replay the stages one by one
+        for (let i = 1; i <= progress.stages.length; i++) { show(progress.stages.slice(0, i)); await new Promise((resolve) => setTimeout(resolve, 180)); }
       }
-      progress = null;
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      for (;;) {
+        if (!progress) progress = await (await fetch(`/api/progress/${started.token}`)).json();
+        show(progress.stages);
+        if (progress.done) {
+          if (progress.error) { $('#outcome').textContent = progress.error; $('#result-title').textContent = 'Verification progress'; }
+          else {
+            $('#outcome').innerHTML = started.result_html || await (await fetch(`/run/${progress.run_id}`)).text();
+            $('#result-title').textContent = 'Result';
+          }
+          break;
+        }
+        progress = null;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    } catch (error) {
+      $('#stages').innerHTML = '';
+      $('#result-title').textContent = 'Verification progress';
+      $('#error').textContent = error.message || 'The application could not be submitted. Please try again.';
+      $('#error').hidden = false;
+    } finally {
+      buttons.forEach((b) => (b.disabled = false));
     }
-    buttons.forEach((b) => (b.disabled = false));
   }
 
   document.querySelectorAll('form.tab').forEach((form) => form.addEventListener('submit', (e) => { e.preventDefault(); run(form); }));

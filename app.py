@@ -229,6 +229,8 @@ def api_submit():
         return jsonify(error="This application is not waiting for corrections"), 400
     if mode == "sample":
         name = request.form.get("sample")
+        if not name:
+            return jsonify(error="Select a sample or choose a JSON file first"), 400
         if name not in sample_files():  # only files from the sample folder, never a path from the browser
             return jsonify(error="Unknown sample"), 400
         with open(f"sample_inputs/{name}") as handle:

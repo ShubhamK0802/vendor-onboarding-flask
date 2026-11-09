@@ -18,6 +18,8 @@ if ($('#stages')) {
     const buttons = document.querySelectorAll('form.tab button.primary');
     const data = new FormData(form);
     data.set('mode', form.dataset.mode);
+    const picked = form.querySelector('input[type=file]');
+    if (picked && picked.files.length) data.set('mode', 'json');  // a file chosen on this tab is the one to process, not the selected sample
     $('#error').hidden = true;
     buttons.forEach((b) => (b.disabled = true));
     $('#placeholder').hidden = true;

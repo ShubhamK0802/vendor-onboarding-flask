@@ -5,8 +5,7 @@
     <div class="tabs">
       <button type="button" class="tab-btn on" data-tab="tab-form">Vendor form</button>
       {% if not correction %}
-      <button type="button" class="tab-btn" data-tab="tab-sample">Samples</button>
-      <button type="button" class="tab-btn" data-tab="tab-json">JSON file</button>
+      <button type="button" class="tab-btn" data-tab="tab-sample">JSON file</button>
       {% endif %}
     </div>
 
@@ -36,13 +35,9 @@
 
     {% if not correction %}<form id="tab-sample" class="tab" data-mode="sample" hidden>
       <label>Choose a sample
-        <select name="sample">{% for value, label in samples %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+        <select name="sample"><option value="" selected disabled>Select a sample...</option>{% for value, label in samples %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
       </label>
-      <button class="primary">Submit</button>
-    </form>
-    <form id="tab-json" class="tab" data-mode="json" hidden>
-      <label>Select the JSON file to upload<input type="file" name="json_file" accept=".json,application/json"></label>
-      <p class="muted">One vendor submission as a JSON file, with the same fields as the Vendor form.</p>
+      <label>...or select your own JSON file to upload<input type="file" name="json_file" accept=".json,application/json"></label>
       <button class="primary">Submit</button>
     </form>{% endif %}
     <p class="error" id="error" hidden></p>

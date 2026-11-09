@@ -419,6 +419,20 @@ def reset():
 
 
 @app.before_request
+def start_timing():
+    store.timing_reset()
+
+
+@app.after_request
+def server_timing(response):
+    """What the database cost this request, in the standard Server-Timing header (visible in the browser's network tab). Shows where time goes on a remote database."""
+    t = store.TIMING
+    response.headers["Server-Timing"] = (f'db;dur={t["ms"]:.0f};desc="{t["n"]} statements, slowest {t["slowest"][0]} {t["slowest"][1]:.0f}ms", '
+                                         f'commit;dur={t["commit_ms"]:.0f}, connect;dur={t["connect_ms"]:.0f}')
+    return response
+
+
+@app.before_request
 def start_mail_worker():
     """Started on the first request, not at import: if the host forks the app after import, a thread started earlier is gone in the child while the
     lock it held stays locked for ever (the app then hangs). The tests switch the worker off and drive the sender by hand."""

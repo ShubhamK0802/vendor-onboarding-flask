@@ -8,6 +8,7 @@ import json
 import re
 import sqlite3
 import threading
+import time
 from contextlib import closing
 from datetime import datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -51,6 +52,19 @@ def new_vendor_id(country):
 
 
 _lock, _shared = threading.RLock(), {"target": None, "conn": None, "postgres": False, "version": 0}
+TIMING = {"n": 0, "ms": 0.0, "commit_ms": 0.0, "connect_ms": 0.0, "slowest": ("", 0.0)}  # what the database cost this request (Server-Timing header)
+
+
+def timing_reset():
+    TIMING.update(n=0, ms=0.0, commit_ms=0.0, connect_ms=0.0, slowest=("", 0.0))
+
+
+def timed(label, started):
+    took = (time.perf_counter() - started) * 1000
+    TIMING["n"] += 1
+    TIMING["ms"] += took
+    if took > TIMING["slowest"][1]:
+        TIMING["slowest"] = (label, took)
 
 
 def version():
@@ -100,22 +114,33 @@ class Handle:
         return getattr(_shared["conn"], name)
 
     def execute(self, sql, args=()):
-        return _shared["conn"].execute(compatible_sql(sql), args)
+        started = time.perf_counter()
+        try:
+            return _shared["conn"].execute(compatible_sql(sql), args)
+        finally:
+            timed(" ".join(sql.split()[:4]), started)
 
     def executemany(self, sql, args):
-        statement = compatible_sql(sql)
-        if _shared["postgres"]:
-            with _shared["conn"].cursor() as cursor:
-                cursor.executemany(statement, args)
-            return None
-        return _shared["conn"].executemany(statement, args)
+        statement, started = compatible_sql(sql), time.perf_counter()
+        try:
+            if _shared["postgres"]:
+                with _shared["conn"].cursor() as cursor:
+                    cursor.executemany(statement, args)
+                return None
+            return _shared["conn"].executemany(statement, args)
+        finally:
+            timed(" ".join(sql.split()[:4]), started)
 
     def __enter__(self):
         _shared["conn"].__enter__()
         return self
 
     def __exit__(self, *exc):
-        return _shared["conn"].__exit__(*exc)
+        started = time.perf_counter()
+        try:
+            return _shared["conn"].__exit__(*exc)
+        finally:
+            TIMING["commit_ms"] += (time.perf_counter() - started) * 1000
 
     def close(self):
         _lock.release()
@@ -127,6 +152,7 @@ def connect():
         target = POSTGRES_URL or DB_PATH
         stale = _shared["postgres"] and _shared["conn"] is not None and _shared["conn"].closed
         if _shared["target"] != target or stale:
+            opened = time.perf_counter()
             if _shared["conn"]:
                 _shared["conn"].close()
             if using_postgres():
@@ -143,6 +169,7 @@ def connect():
                 conn.executescript(SQLITE_SCHEMA)
             _shared.update(target=target, conn=conn, postgres=using_postgres())
             seed()  # once per connection, not once per call: on a remote database every statement is a network round trip
+            TIMING["connect_ms"] += (time.perf_counter() - opened) * 1000
         return Handle()
     except BaseException:
         _lock.release()

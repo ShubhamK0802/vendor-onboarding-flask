@@ -623,5 +623,10 @@ check(page_statements <= 3, "round trips: two page loads make at most 3 statemen
 store.reset()
 check(len(store.known_vendors([])) == 1, "round trips: reset restores the vendors on file at once, with no per-call check")
 
+# ---- the database cost of each request is reported in the standard Server-Timing header
+header = client.post("/api/submit", data={"mode": "sample", "sample": "01_approved_india_clean.json"}, content_type="multipart/form-data").headers.get("Server-Timing", "")
+check(header.startswith("db;dur=") and "commit;dur=" in header and "connect;dur=" in header and "statements" in header, "server timing: submit reports what the database cost", header)
+store.reset()
+
 print("ALL PASSED" if not failed else f"FAILED: {failed}")
 sys.exit(1 if failed else 0)
